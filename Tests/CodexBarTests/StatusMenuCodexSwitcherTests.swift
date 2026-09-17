@@ -1146,7 +1146,6 @@ extension StatusMenuCodexSwitcherTests {
 
         let menu = controller.makeMenu()
         controller.menuWillOpen(menu)
-        let menuKey = ObjectIdentifier(menu)
         let switcher = try #require(menu.items.compactMap { $0.view as? CodexAccountSwitcherView }.first)
         let managedVisibleAccount = try #require(settings.codexVisibleAccountProjection.visibleAccounts
             .first { $0.storedAccountID == managedAccountID })

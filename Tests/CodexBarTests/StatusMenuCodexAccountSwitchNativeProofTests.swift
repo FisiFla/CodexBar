@@ -105,21 +105,22 @@ final class StatusMenuCodexAccountSwitchNativeProofTests: XCTestCase {
 
         let menu = controller.makeMenu()
         controller.menuWillOpen(menu)
+        let menuKey = ObjectIdentifier(menu)
+        controller.openMenus[menuKey] = menu
         let switcher = try XCTUnwrap(menu.items.compactMap { $0.view as? CodexAccountSwitcherView }.first)
         let managedVisibleAccount = try XCTUnwrap(settings.codexVisibleAccountProjection.visibleAccounts
             .first { $0.storedAccountID == managedAccountID })
-
-        // A hosted chart submenu the user opened after selecting the account must survive the
-        // delayed rebuild.
-        let submenu = controller.makeHostedSubviewPlaceholderMenu(
-            chartID: StatusItemController.costHistoryChartID,
-            provider: .codex)
-        controller.openMenus[ObjectIdentifier(submenu)] = submenu
 
         var transcript: [String] = []
         func publishedEmail() -> String {
             store.snapshots[.codex]?.identity?.accountEmail ?? "<nil>"
         }
+        var parentRebuilds = 0
+        controller._test_openMenuRebuildObserver = { rebuiltMenu in
+            guard rebuiltMenu === menu else { return }
+            parentRebuilds += 1
+        }
+        defer { controller._test_openMenuRebuildObserver = nil }
 
         transcript.append("before select: published email \(publishedEmail())")
         try Self.writePNG(
@@ -136,23 +137,43 @@ final class StatusMenuCodexAccountSwitchNativeProofTests: XCTestCase {
         while controller.menuNeedsRefresh(menu), ContinuousClock.now < prefetchDeadline {
             await Task.yield()
         }
+        let rebuildsBeforeFetch = parentRebuilds
         transcript.append("pre-fetch drained: published email \(publishedEmail())")
 
-        // The account-scoped fetch completes while the menu stays open.
+        // While the account-scoped fetch is in flight, the user opens a hosted chart submenu
+        // from the still-open parent menu. It must survive the delayed rebuild.
+        let submenu = controller.makeHostedSubviewPlaceholderMenu(
+            chartID: StatusItemController.costHistoryChartID,
+            provider: .codex)
+        controller.menuWillOpen(submenu)
+        let submenuKey = ObjectIdentifier(submenu)
+        XCTAssertTrue(controller.openMenus[submenuKey] === submenu, "hosted submenu must be tracked")
+
+        // The account-scoped fetch completes while both menus stay open.
         await blocker.waitUntilStarted()
         await blocker.resume(with: .success(Self.snapshot(email: "managed@example.com", percent: 17)))
         transcript.append("fetch resumed with managed@example.com snapshot (17%)")
 
-        let rebuildDeadline = ContinuousClock.now + .seconds(5)
-        while store.snapshots[.codex]?.identity?.accountEmail != "managed@example.com"
-            || controller.menuNeedsRefresh(menu),
-            ContinuousClock.now < rebuildDeadline
+        let publishDeadline = ContinuousClock.now + .seconds(5)
+        while store.snapshots[.codex]?.identity?.accountEmail != "managed@example.com",
+            ContinuousClock.now < publishDeadline
         {
             await Task.yield()
         }
-        let submenuStillOpen = controller.openMenus[ObjectIdentifier(submenu)] === submenu
+        let submenuStillOpen = controller.openMenus[submenuKey] === submenu
         transcript.append("after fetch: published email \(publishedEmail())")
-        transcript.append("hosted submenu still open: \(submenuStillOpen)")
+        transcript.append("hosted submenu still open after fetch: \(submenuStillOpen)")
+        transcript.append("parent rebuilds while submenu open: \(parentRebuilds - rebuildsBeforeFetch)")
+        XCTAssertTrue(submenuStillOpen, "open hosted submenu must survive the delayed rebuild")
+
+        // Closing the chart reconciles the deferred parent rebuild, landing the fetched usage
+        // in the card without closing the parent menu.
+        controller.menuDidClose(submenu)
+        let reconcileDeadline = ContinuousClock.now + .seconds(5)
+        while parentRebuilds <= rebuildsBeforeFetch, ContinuousClock.now < reconcileDeadline {
+            await Task.yield()
+        }
+        transcript.append("after submenu close: total parent rebuilds \(parentRebuilds)")
 
         try Self.writePNG(
             Self.renderFirstMenuCardPNG(menu: menu, controller: controller),
@@ -167,10 +188,14 @@ final class StatusMenuCodexAccountSwitchNativeProofTests: XCTestCase {
             encoding: .utf8)
 
         // The fetched usage for the new account must be published and rendered without closing
-        // the menu, and the hosted submenu must not have been dismissed.
+        // the menu, and the hosted submenu must not have been dismissed by the rebuild.
         XCTAssertEqual(publishedEmail(), "managed@example.com")
-        XCTAssertTrue(menu.items.contains { $0.view != nil }, "usage card view must still be planted")
         XCTAssertTrue(submenuStillOpen, "open hosted submenu must survive the delayed rebuild")
+        XCTAssertTrue(controller.openMenus[menuKey] === menu, "parent menu must stay open throughout")
+        XCTAssertTrue(menu.items.contains { $0.view != nil }, "usage card view must still be planted")
+        XCTAssertGreaterThan(
+            parentRebuilds, rebuildsBeforeFetch,
+            "deferred parent rebuild must land after the hosted submenu closes")
     }
 
     private static func snapshot(email: String, percent: Double) -> UsageSnapshot {
