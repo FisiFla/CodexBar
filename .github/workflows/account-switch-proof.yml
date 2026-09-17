@@ -1,0 +1,48 @@
+name: Account Switch Native Proof
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: proof-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proof:
+    runs-on: macos-26
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26.6
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          echo "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer" >> "$GITHUB_ENV"
+
+      - name: Run native account-switch proof
+        run: |
+          set -euo pipefail
+          mkdir -p proof-artifacts
+          CODEXBAR_SUPPRESS_TEST_KEYCHAIN_ACCESS=1 \
+          CODEXBAR_ACCOUNT_SWITCH_PROOF_DIR="$PWD/proof-artifacts" \
+            swift test --filter StatusMenuCodexAccountSwitchNativeProofTests 2>&1 | tee proof-log.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Show transcript
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          if [[ -f proof-artifacts/transcript.txt ]]; then
+            cat proof-artifacts/transcript.txt
+          else
+            echo "no transcript produced"
+          fi
+
+      - name: Upload proof artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-switch-native-proof
+          path: proof-artifacts/
+          if-no-files-found: warn
