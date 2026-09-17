@@ -427,6 +427,19 @@ extension StatusItemController {
             allowStaleContentDuringDataRefresh: true)
     }
 
+    /// Marks the open root menu stale and schedules one in-place rebuild that is allowed to run now.
+    /// Unlike `refreshOpenMenuIfStillVisible`, the rebuild is not deferred for the whole tracking
+    /// session, so delayed updates (e.g. account-scoped refresh phases, #3709) reach the open menu;
+    /// unlike `rebuildOpenMenuIfStillVisible`, the content version is bumped so stale-state and
+    /// hosted-submenu close reconciliation still observe the change.
+    func scheduleOpenRootMenuDataRebuildIfStillVisible(_ menu: NSMenu, provider: UsageProvider?) {
+        let key = ObjectIdentifier(menu)
+        guard self.openMenus[key] != nil else { return }
+        guard !self.isHostedSubviewMenu(menu) else { return }
+        self.invalidateMenus(refreshOpenMenus: false, allowStaleContentDuringDataRefresh: true)
+        self.scheduleOpenMenuRebuildIfStillVisible(menu, provider: provider)
+    }
+
     func rebuildOpenMenuIfStillVisible(_ menu: NSMenu, provider: UsageProvider?) {
         let key = ObjectIdentifier(menu)
         guard self.openMenus[key] != nil else { return }

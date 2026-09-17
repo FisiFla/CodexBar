@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Codex: rebuild the open account card when account-scoped refresh phases land, so switching accounts in the segmented layout shows the fetched usage without closing and reopening the menu (fixes #3709).
 - Codex costs: publish validated reporting windows during historical catch-up while retaining prior data for incomplete sources and preserving automatic power limits (#3669, related to #3508). Thanks @kernnel!
 - Codex: honor Hide Personal Info in the System Account submenu, keeping stable account labels and unchanged promotion actions (#3702, related to #3550). Thanks @zenibako!
 - Claude costs: apply the correct GPT long-context boundary, recalculate saved estimates, and preserve retained Codex history during the upgrade (#3684). Thanks @MoridinBG!

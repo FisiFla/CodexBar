@@ -1033,8 +1033,8 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "The memory-pressure debug fixture installs its synthetic entry in the Codex cache slot."),
         SuppressedProviderReference(
             path: "Sources/CodexBar/StatusItemController+Menu.swift",
-            line: 1125,
-            anchor: "controller.deferSwitcherMenuRebuildIfStillVisible(menu, provider: .codex)",
+            line: 1127,
+            anchor: "controller.scheduleOpenRootMenuDataRebuildIfStillVisible(menu, provider: .codex)",
             expectedProviderIDs: ["codex"],
             reason: "This provider-specific app branch passes its already-selected identity to a shared helper."),
         SuppressedProviderReference(

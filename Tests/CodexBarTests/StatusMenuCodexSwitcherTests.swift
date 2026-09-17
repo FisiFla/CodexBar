@@ -1159,26 +1159,33 @@ extension StatusMenuCodexSwitcherTests {
 
         switcher._test_selectAccount(id: managedVisibleAccount.id)
 
-        // Selection schedules its own coalesced rebuild before the account-scoped fetch resolves.
-        for _ in 0..<20 where rebuildCount == 0 {
+        // Selection schedules its own coalesced rebuild before the account-scoped fetch resolves; the
+        // refresh's early phases can schedule further rebuilds. Drain the pre-fetch rebuilds.
+        let prefetchDeadline = ContinuousClock.now + .seconds(2)
+        while controller.parentMenuRebuildsDeferredDuringTracking.contains(menuKey)
+            || controller.menuNeedsRefresh(menu),
+            ContinuousClock.now < prefetchDeadline
+        {
             await Task.yield()
         }
-        #expect(rebuildCount == 1)
+        let rebuildsBeforeFetch = rebuildCount
+        #expect(rebuildsBeforeFetch >= 1)
 
-        // The blocked account-scoped fetch completes while the menu stays open. Its phase callbacks must
-        // rebuild the open menu so the fetched usage replaces the cleared card (#3709) instead of leaving
-        // a deferred parent rebuild that only resolves after the menu is reopened.
+        // The blocked account-scoped fetch completes while the menu stays open. Its phase callbacks
+        // must rebuild the open menu so the fetched usage replaces the cleared card (#3709) instead of
+        // leaving a deferred parent rebuild that only resolves after the menu is reopened.
         await blocker.waitUntilStarted()
         await blocker.resume(with: .success(self.snapshot(email: "managed@example.com", percent: 17)))
 
         let rebuildDeadline = ContinuousClock.now + .seconds(2)
-        while rebuildCount < 2
-            || controller.parentMenuRebuildsDeferredDuringTracking.contains(menuKey),
+        while rebuildCount == rebuildsBeforeFetch
+            || controller.parentMenuRebuildsDeferredDuringTracking.contains(menuKey)
+            || controller.menuNeedsRefresh(menu),
             ContinuousClock.now < rebuildDeadline
         {
             await Task.yield()
         }
-        #expect(rebuildCount >= 2)
+        #expect(rebuildCount > rebuildsBeforeFetch)
         #expect(!controller.parentMenuRebuildsDeferredDuringTracking.contains(menuKey))
     }
 
