@@ -1119,7 +1119,10 @@ extension StatusItemController {
                         else {
                             return
                         }
-                        controller.refreshOpenMenuIfStillVisible(menu, provider: .codex)
+                        // Rebuild through the switcher path: the generic refresh path defers parent rebuilds
+                        // while tracking, which left the freshly fetched usage unrendered until the menu was
+                        // reopened (#3709). The switcher path coalesces phases and rebuilds in place.
+                        controller.deferSwitcherMenuRebuildIfStillVisible(menu, provider: .codex)
                     })
             }
         }
