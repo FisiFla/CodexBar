@@ -140,7 +140,7 @@ final class StatusMenuCodexAccountSwitchNativeProofTests: XCTestCase {
 
         // The account-scoped fetch completes while the menu stays open.
         await blocker.waitUntilStarted()
-        blocker.resume(with: .success(Self.snapshot(email: "managed@example.com", percent: 17)))
+        await blocker.resume(with: .success(Self.snapshot(email: "managed@example.com", percent: 17)))
         transcript.append("fetch resumed with managed@example.com snapshot (17%)")
 
         let rebuildDeadline = ContinuousClock.now + .seconds(5)
@@ -231,7 +231,8 @@ final class StatusMenuCodexAccountSwitchNativeProofTests: XCTestCase {
     }
 }
 
-private actor AccountSwitchProofFetchBlocker {
+@MainActor
+private final class AccountSwitchProofFetchBlocker {
     private var waiters: [CheckedContinuation<Result<UsageSnapshot, Error>, Never>] = []
     private var startedWaiters: [CheckedContinuation<Void, Never>] = []
     private var startCount = 0
@@ -240,7 +241,9 @@ private actor AccountSwitchProofFetchBlocker {
         let result = await withCheckedContinuation { continuation in
             self.waiters.append(continuation)
             self.startCount += 1
-            self.startedWaiters.forEach { $0.continuation.resume() }
+            for waiter in self.startedWaiters {
+                waiter.resume()
+            }
             self.startedWaiters.removeAll()
         }
         return try result.get()
@@ -254,7 +257,9 @@ private actor AccountSwitchProofFetchBlocker {
     }
 
     func resume(with result: Result<UsageSnapshot, Error>) {
-        self.waiters.forEach { $0.resume(returning: result) }
+        for waiter in self.waiters {
+            waiter.resume(returning: result)
+        }
         self.waiters.removeAll()
     }
 }
