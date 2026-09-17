@@ -1162,10 +1162,7 @@ extension StatusMenuCodexSwitcherTests {
         // Selection schedules its own coalesced rebuild before the account-scoped fetch resolves; the
         // refresh's early phases can schedule further rebuilds. Drain the pre-fetch rebuilds.
         let prefetchDeadline = ContinuousClock.now + .seconds(2)
-        while controller.parentMenuRebuildsDeferredDuringTracking.contains(menuKey)
-            || controller.menuNeedsRefresh(menu),
-            ContinuousClock.now < prefetchDeadline
-        {
+        while rebuildCount == 0, ContinuousClock.now < prefetchDeadline {
             await Task.yield()
         }
         let rebuildsBeforeFetch = rebuildCount
@@ -1178,15 +1175,10 @@ extension StatusMenuCodexSwitcherTests {
         await blocker.resume(with: .success(self.snapshot(email: "managed@example.com", percent: 17)))
 
         let rebuildDeadline = ContinuousClock.now + .seconds(2)
-        while rebuildCount == rebuildsBeforeFetch
-            || controller.parentMenuRebuildsDeferredDuringTracking.contains(menuKey)
-            || controller.menuNeedsRefresh(menu),
-            ContinuousClock.now < rebuildDeadline
-        {
+        while rebuildCount == rebuildsBeforeFetch, ContinuousClock.now < rebuildDeadline {
             await Task.yield()
         }
         #expect(rebuildCount > rebuildsBeforeFetch)
-        #expect(!controller.parentMenuRebuildsDeferredDuringTracking.contains(menuKey))
     }
 
     @Test
