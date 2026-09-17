@@ -132,13 +132,23 @@ final class StatusMenuCodexAccountSwitchNativeProofTests: XCTestCase {
         switcher._test_selectAccount(id: managedVisibleAccount.id)
         transcript.append("selected managed account; published email \(publishedEmail())")
 
-        // Drain the pre-fetch rebuilds triggered by selection and the early refresh phases.
+        // Drain the pre-fetch rebuilds triggered by selection and the early refresh phases. The
+        // selection's own switcher rebuild is RunLoop-scheduled and closes hosted submenus by
+        // design, so wait until every close-flagged rebuild has fully drained before planting
+        // the user's chart submenu.
         let prefetchDeadline = ContinuousClock.now + .seconds(5)
-        while controller.menuNeedsRefresh(menu), ContinuousClock.now < prefetchDeadline {
+        while controller.menuNeedsRefresh(menu)
+            || !controller.openMenuRebuildsClosingHostedSubviewMenus.isEmpty,
+            ContinuousClock.now < prefetchDeadline
+        {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
             await Task.yield()
         }
+        XCTAssertTrue(
+            controller.openMenuRebuildsClosingHostedSubviewMenus.isEmpty,
+            "switcher rebuilds must have drained before the chart submenu is opened")
         let rebuildsBeforeFetch = parentRebuilds
-        transcript.append("pre-fetch drained: published email \(publishedEmail())")
+        transcript.append("pre-fetch drained: published email \(publishedEmail()); rebuilds \(rebuildsBeforeFetch)")
 
         // While the account-scoped fetch is in flight, the user opens a hosted chart submenu
         // from the still-open parent menu. It must survive the delayed rebuild.
