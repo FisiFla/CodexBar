@@ -141,7 +141,7 @@ final class StatusMenuCodexAccountSwitchNativeProofTests: XCTestCase {
             || !controller.openMenuRebuildsClosingHostedSubviewMenus.isEmpty,
             ContinuousClock.now < prefetchDeadline
         {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+            Self.pumpMainRunLoop(for: 0.01)
             await Task.yield()
         }
         XCTAssertTrue(
@@ -161,7 +161,7 @@ final class StatusMenuCodexAccountSwitchNativeProofTests: XCTestCase {
 
         // The account-scoped fetch completes while both menus stay open.
         await blocker.waitUntilStarted()
-        await blocker.resume(with: .success(Self.snapshot(email: "managed@example.com", percent: 17)))
+        blocker.resume(with: .success(Self.snapshot(email: "managed@example.com", percent: 17)))
         transcript.append("fetch resumed with managed@example.com snapshot (17%)")
 
         let publishDeadline = ContinuousClock.now + .seconds(5)
@@ -181,6 +181,7 @@ final class StatusMenuCodexAccountSwitchNativeProofTests: XCTestCase {
         controller.menuDidClose(submenu)
         let reconcileDeadline = ContinuousClock.now + .seconds(5)
         while parentRebuilds <= rebuildsBeforeFetch, ContinuousClock.now < reconcileDeadline {
+            Self.pumpMainRunLoop(for: 0.01)
             await Task.yield()
         }
         transcript.append("after submenu close: total parent rebuilds \(parentRebuilds)")
@@ -251,6 +252,12 @@ final class StatusMenuCodexAccountSwitchNativeProofTests: XCTestCase {
             return representation.representation(using: .png, properties: [:])
         }
         return nil
+    }
+
+    /// `RunLoop.run(until:)` is unavailable from async contexts; wrap it in a synchronous
+    /// helper so async test loops can pump RunLoop-scheduled menu work (CFRunLoopPerformBlock).
+    private static func pumpMainRunLoop(for interval: TimeInterval) {
+        RunLoop.main.run(until: Date().addingTimeInterval(interval))
     }
 
     private static func writePNG(_ data: Data?, to proofDirectory: String, name: String) throws {
