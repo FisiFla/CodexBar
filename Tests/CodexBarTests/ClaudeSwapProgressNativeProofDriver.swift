@@ -333,6 +333,14 @@ final class ClaudeSwapProgressNativeProofDriver {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.recognitionLanguages = ["en-US"]
+        // Keep synthetic OCR independent of accelerator availability on the test host.
+        for (stage, devices) in try request.supportedComputeStageDevices {
+            let cpu = try XCTUnwrap(devices.first { device in
+                if case .cpu = device { return true }
+                return false
+            })
+            request.setComputeDevice(cpu, for: stage)
+        }
         try VNImageRequestHandler(cgImage: image).perform([request])
         return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
     }
