@@ -499,7 +499,8 @@ extension StatusItemController {
         self.nativeHighlightDeferredMenuRebuilds.removeValue(forKey: key)
         self.scheduleOpenMenuRebuildIfStillVisible(
             menu,
-            provider: deferredRebuild.provider)
+            provider: deferredRebuild.provider,
+            duringTracking: true)
     }
 
     func refreshOpenMenusIfNeeded() {
@@ -516,7 +517,7 @@ extension StatusItemController {
             return
         }
         self.parentMenuRebuildPendingAfterHostedSubviewClose = false
-        self.refreshOpenMenusIfNeeded(allowsParentRebuild: true)
+        self.refreshOpenMenusIfNeeded(allowsParentRebuild: true, duringTracking: true)
         self.resumeParentMenuRebuildsDeferredForNativeHighlightAfterHostedSubviewClose()
     }
 
@@ -566,8 +567,8 @@ extension StatusItemController {
 
     private func refreshOpenMenusIfNeeded(
         allowsParentRebuild: Bool,
-        deferParentRebuildDuringTracking: Bool = false,
-        respectsParentRebuildDeferral: Bool = false)
+        duringTracking: Bool = false,
+        deferParentRebuildDuringTracking: Bool = false)
     {
         var orphanedKeys: [ObjectIdentifier] = []
         let hasOpenHostedSubviewMenu = self.hasOpenHostedSubviewMenu()
@@ -579,8 +580,8 @@ extension StatusItemController {
             self.refreshOpenMenuIfNeeded(
                 menu,
                 allowsParentRebuild: allowsParentRebuild,
+                duringTracking: duringTracking,
                 deferParentRebuildDuringTracking: deferParentRebuildDuringTracking,
-                respectsParentRebuildDeferral: respectsParentRebuildDeferral,
                 hasOpenHostedSubviewMenu: hasOpenHostedSubviewMenu)
         }
         self.removeOrphanedOpenMenuEntries(orphanedKeys)
@@ -589,8 +590,8 @@ extension StatusItemController {
     private func refreshOpenMenuIfNeeded(
         _ menu: NSMenu,
         allowsParentRebuild: Bool,
+        duringTracking: Bool,
         deferParentRebuildDuringTracking: Bool,
-        respectsParentRebuildDeferral: Bool,
         hasOpenHostedSubviewMenu: Bool)
     {
         if self.isHostedSubviewMenu(menu) {
@@ -605,14 +606,11 @@ extension StatusItemController {
             self.menuSession.deferParentRebuild(key)
             return
         }
-        if respectsParentRebuildDeferral, self.menuSession.isParentRebuildDeferred(key) {
-            return
-        }
         self.menuSession.clearParentRebuildDeferral(key)
         guard !hasOpenHostedSubviewMenu else { return }
 
         let provider = self.menuProvider(for: menu)
-        self.scheduleOpenMenuRebuildIfStillVisible(menu, provider: provider)
+        self.scheduleOpenMenuRebuildIfStillVisible(menu, provider: provider, duringTracking: duringTracking)
     }
 
     private func removeOrphanedOpenMenuEntries(_ keys: [ObjectIdentifier]) {

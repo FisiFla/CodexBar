@@ -287,14 +287,15 @@ extension StatusItemController {
         provider: UsageProvider?,
         closeHostedSubviewMenusBeforeRebuild: Bool = false,
         resyncReadinessBaselineAfterRebuild: Bool = false,
+        duringTracking: Bool = false,
         debounceNanoseconds: UInt64 = 0,
         beforeRebuild: (@MainActor () -> Bool)? = nil)
     {
-        if debounceNanoseconds == 0, !self.usesTaskSchedulerForTesting {
+        if duringTracking, debounceNanoseconds == 0, !self.usesTaskSchedulerForTesting {
             if resyncReadinessBaselineAfterRebuild {
                 self.pendingMenuBaselineResyncs.insert(ObjectIdentifier(menu))
             }
-            // Hosted-submenu and native-highlight resumptions must also run while the parent tracks.
+            // Explicit interaction resumptions must also run while the parent tracks.
             self.scheduleTrackingMenuRebuildIfStillVisible(
                 menu,
                 provider: provider,
