@@ -21,9 +21,17 @@ struct CLILiveHistoryTests {
         let expected = "Last 30 days (UTC): \(scenario.2) · 15 tokens"
         let (text, card) = Self.render(snapshot)
         #expect(text.components(separatedBy: expected).count == 2)
-        #expect(card.extraLines.filter { $0 == expected }.count == 1)
-        let renderedCard = CLICardsRenderer.renderCard(card, width: 120, useColor: false).joined(separator: "\n")
-        #expect(renderedCard.contains(expected))
+        #expect(card.historySummary == expected)
+        for width in [38, 42, 80, 120] {
+            for useColor in [false, true] {
+                let renderedCard = CLICardsRenderer.render(
+                    cards: [card], failures: [], terminalWidth: width, useColor: useColor, enhanced: useColor)
+                let content = TextParsing.stripANSICodes(renderedCard).split(separator: "\n")
+                    .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "│ ")) }
+                    .joined(separator: " ")
+                #expect(content.components(separatedBy: expected).count == 2)
+            }
+        }
         #expect(text.contains("Balance: $60.00"))
         #expect(text.contains("API key used: $5.00"))
         #expect(snapshot.primary?.usedPercent == 25)
@@ -39,7 +47,13 @@ struct CLILiveHistoryTests {
         let decoded = try JSONDecoder().decode(UsageSnapshot.self, from: data)
         #expect(decoded.costUsage == nil)
         #expect(decoded.details == snapshot.details)
-        #expect(decoded.identity == snapshot.identity)
+        let originalIdentity = try #require(snapshot.identity)
+        let decodedIdentity = try #require(decoded.identity)
+        #expect(decodedIdentity.providerID == originalIdentity.providerID)
+        #expect(decodedIdentity.accountEmail == originalIdentity.accountEmail)
+        #expect(decodedIdentity.accountOrganization == originalIdentity.accountOrganization)
+        #expect(decodedIdentity.loginMethod == originalIdentity.loginMethod)
+        #expect(decodedIdentity.accountID == originalIdentity.accountID)
     }
 
     @Test(arguments: BundledPluginTestSupport.engines)
@@ -51,7 +65,7 @@ struct CLILiveHistoryTests {
         let (emptyText, emptyCard) = Self.render(empty)
         let zero = "Last 30 days (UTC): $0.00 (reported) · 0 tokens"
         #expect(emptyText.contains(zero))
-        #expect(emptyCard.extraLines.contains(zero))
+        #expect(emptyCard.historySummary == zero)
 
         let failed = try await OpenRouterReasoningTestSupport.snapshot(engine: engine, activityBody: "not-json")
         #expect(failed.costUsage == nil)
@@ -81,16 +95,25 @@ struct CLILiveHistoryTests {
             currencyCode: scenario.currency,
             historyDays: scenario.days,
             historyLabel: scenario.label,
-            daily: [],
+            // The renderer must not replace authoritative totals, including nil, with a daily sum.
+            daily: [CostUsageDailyReport.Entry(
+                date: "2026-08-17",
+                inputTokens: 90,
+                outputTokens: 9,
+                totalTokens: 99,
+                costUSD: 9.99,
+                modelsUsed: nil,
+                modelBreakdowns: nil)],
             updatedAt: OpenRouterReasoningTestSupport.now)
         let snapshot = UsageSnapshot(primary: nil, secondary: nil, costUsage: history, updatedAt: history.updatedAt)
         let (text, card) = Self.render(snapshot, provider: scenario.provider)
         if let expected = scenario.expected {
             #expect(text.contains(expected))
-            #expect(card.extraLines.contains(expected))
+            #expect(card.historySummary == expected)
         } else {
             #expect(!text.contains("Last 30 days"))
             #expect(card.extraLines.isEmpty)
+            #expect(card.historySummary == nil)
         }
         if scenario.amount == nil { #expect(!text.contains("$0.00")) }
         if scenario.tokens == nil { #expect(!text.contains("0 tokens")) }

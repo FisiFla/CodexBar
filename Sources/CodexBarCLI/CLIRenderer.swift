@@ -83,6 +83,9 @@ enum CLIRenderer {
             snapshot: snapshot,
             useColor: context.useColor,
             lines: &lines)
+        if let history = self.liveHistoryLine(snapshot: snapshot, useColor: context.useColor) {
+            lines.append(history)
+        }
         self.appendLimitsUnavailableLine(
             provider: provider,
             snapshot: snapshot,
@@ -583,7 +586,10 @@ enum CLIRenderer {
             let value = UsageFormatter.currencyString(balance.amount, currencyCode: balance.currencyCode)
             lines.append(self.labelValueLine(balance.label, value: value, useColor: useColor))
         }
-        guard let history = snapshot.costUsage else { return }
+    }
+
+    static func liveHistoryLine(snapshot: UsageSnapshot, useColor: Bool) -> String? {
+        guard let history = snapshot.costUsage else { return nil }
         var values: [String] = []
         if let amount = history.last30DaysCostUSD {
             let value = UsageFormatter.currencyString(amount, currencyCode: history.currencyCode)
@@ -599,7 +605,7 @@ enum CLIRenderer {
             let unit = tokens == 1 ? "token" : "tokens"
             values.append("\(UsageFormatter.tokenCountString(tokens)) \(unit)")
         }
-        guard !values.isEmpty else { return }
+        guard !values.isEmpty else { return nil }
         let label: String = if let custom = history.historyLabel,
                                !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
@@ -607,7 +613,7 @@ enum CLIRenderer {
         } else {
             history.historyDays == 1 ? "Last 1 day" : "Last \(history.historyDays) days"
         }
-        lines.append(self.labelValueLine(label, value: values.joined(separator: " · "), useColor: useColor))
+        return self.labelValueLine(label, value: values.joined(separator: " · "), useColor: useColor)
     }
 
     // swiftlint:disable:next function_parameter_count
