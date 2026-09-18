@@ -15,6 +15,7 @@ final class ClaudeSwapProgressNativeProofDriver {
     private var stage: Stage = .opening
     private var stageStartedAt = Date()
     private var lastCaptureAt = Date.distantPast
+    private var ticking = false
     private var selectionGeneration: Int?
     private var receipts: [[String: Any]] = []
     var trackingReturned = false
@@ -38,7 +39,9 @@ final class ClaudeSwapProgressNativeProofDriver {
     }
 
     func tick() {
-        guard self.stage != .finished else { return }
+        guard self.stage != .finished, !self.ticking else { return }
+        self.ticking = true
+        defer { self.ticking = false }
         do {
             guard Date().timeIntervalSince(self.startedAt) < 45 else { throw ProofFailure.deadline }
             guard !self.trackingReturned,
@@ -74,12 +77,12 @@ final class ClaudeSwapProgressNativeProofDriver {
         guard let content = self.attachedContent(), self.shouldCapture else { return }
         let capture = try self.capture(label: "initial", content: content)
         let matches = Self.contains(capture.cardText, "Account 1") && Self.contains(capture.cardText, "61%") &&
-            self.chipsMatch(content, activeIndex: 0, enabled: true) && self.headingMatches(capture)
+            self.chipsMatch(content, activeSlot: 1, enabled: true) && self.headingMatches(capture)
         guard self.acceptCapture(matches: matches, description: "Initial attached Account 1 / 61% card and chips")
         else {
             return
         }
-        let button = content.buttons[1]
+        let button = try XCTUnwrap(content.buttons.first { $0.title == "Account 2" })
         guard button.isEnabled, button.window === content.window else { throw ProofFailure.detachedContent }
         self.selectedRenderedButton = true
         button.performClick(nil)
@@ -120,7 +123,8 @@ final class ClaudeSwapProgressNativeProofDriver {
         self.capturedReconciling = true
         guard content.buttons.allSatisfy({ !$0.isEnabled }) else { throw ProofFailure.chipsNotDisabled }
         // Exercise the newly attached, disabled third chip while the original transaction remains held.
-        content.buttons[2].performClick(nil)
+        let disabledButton = try XCTUnwrap(content.buttons.first { $0.title == "Account 3" })
+        disabledButton.performClick(nil)
         self.attemptedDisabledSelection = true
         try self.requireSingleSwitch()
         self.record(label: "disabled-account-3-click", content: content, capture: nil)
@@ -143,7 +147,7 @@ final class ClaudeSwapProgressNativeProofDriver {
             self.headingMatches(capture)
         if let expected = self.configuration.expectedCompleted {
             matches = matches && Self.contains(capture.cardText, expected) &&
-                self.chipsMatch(content, activeIndex: 1, enabled: true)
+                self.chipsMatch(content, activeSlot: 2, enabled: true)
         }
         guard self.acceptCapture(matches: matches, description: "Completed attached Account 2 card") else { return }
         self.capturedCompleted = true
@@ -176,14 +180,18 @@ final class ClaudeSwapProgressNativeProofDriver {
 
     private func pendingCaptureMatches(_ capture: Capture, content: Content, expected: String) -> Bool {
         Self.contains(capture.cardText, "Account 2") && Self.contains(capture.cardText, "17%") &&
-            Self.contains(capture.cardText, expected) && self.chipsMatch(content, activeIndex: 0, enabled: false) &&
+            Self.contains(capture.cardText, expected) && self.chipsMatch(content, activeSlot: 1, enabled: false) &&
             self.headingMatches(capture)
     }
 
-    private func chipsMatch(_ content: Content, activeIndex: Int, enabled: Bool) -> Bool {
-        content.buttons.enumerated().allSatisfy { index, button in
-            button.title == "Account \(index + 1)" && button.isEnabled == enabled &&
-                button.state == (index == activeIndex ? .on : .off)
+    private func chipsMatch(_ content: Content, activeSlot: Int, enabled: Bool) -> Bool {
+        // Reconciliation moves the active slot first; identity must not depend on its position.
+        guard content.buttons.count == 3,
+              Set(content.buttons.map(\.title)) == Set(["Account 1", "Account 2", "Account 3"])
+        else { return false }
+        return content.buttons.allSatisfy { button in
+            button.isEnabled == enabled &&
+                button.state == (button.title == "Account \(activeSlot)" ? .on : .off)
         }
     }
 
