@@ -4,6 +4,7 @@
 
 ### Fixed
 - Azure OpenAI: select OpenAI-compatible v1 in Settings with a shared app/CLI override that preserves the default environment behavior (#3705). Thanks @UndreamerC!
+- Claude: apply the existing process-local Remote Control startup override to the non-PTY usage fallback, preserving saved settings and managed-policy precedence (related to #2251). Thanks @rossshannon!
 - DeepSeek: show reported per-model spend alongside existing usage charts, preserving billing currency and reporting period and honoring optional-usage visibility (#2938). Thanks @jky1314!
 - Codex: refresh the selected account card while its menu stays open, preserving hosted submenus and account ownership when delayed usage arrives (#3715, fixes #3709). Thanks @sandeep780049!
 - Claude: distinguish account switching from the following status refresh in open menus, clarify which claude-swap chips activate Claude Code, and keep active-account inspection usable during credential repair (related to #3736).
@@ -11,6 +12,7 @@
 - Mistral: show reported included API and Vibe Code allowances alongside spend and credits, preserving Automatic spend display and independent fallback when optional data is unavailable (#3710). Thanks @JoPaMu!
 - Devin: honor the selected organization, exclude unrelated sites from browser session import, and prefer current decoded credentials over raw storage fallback data.
 - OpenRouter: show an uncapped pay-as-you-go summary with accurate reporting periods and optional prepaid balance, preserving capped-key quotas and avoiding duplicate detail rows (#3696). Thanks @Chipagosfinest!
+- OpenRouter: recognize management keys in the primary API-key field on the official API and show compact account Activity totals for 30 completed UTC days, preserving separate-key precedence (#3272). Thanks @akshayprabhu200!
 - OpenRouter: distinguish invalid response data from network failures in optional credits, key quota, and Activity diagnostics, preserving usable data from the other sources (#3718). Thanks @Chipagosfinest!
 - Grok: show available usage-limit reset coupons and expiry dates from the account that supplied billing, without delaying weekly usage or reusing persisted coupon inventory (#3188). Thanks @Leshabeats!
 - OpenRouter: retain spend history when reported reasoning tokens exceed completion tokens, preserving the separate counters, input-plus-output totals, quota, and balance (#3717). Thanks @Chipagosfinest!
