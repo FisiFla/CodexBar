@@ -432,12 +432,28 @@ extension StatusItemController {
     /// session, so delayed updates (e.g. account-scoped refresh phases, #3709) reach the open menu;
     /// unlike `rebuildOpenMenuIfStillVisible`, the content version is bumped so stale-state and
     /// hosted-submenu close reconciliation still observe the change.
-    func scheduleOpenRootMenuDataRebuildIfStillVisible(_ menu: NSMenu, provider: UsageProvider?) {
+    func scheduleOpenRootMenuDataRebuildIfStillVisible(
+        _ menu: NSMenu,
+        provider: UsageProvider,
+        isCurrent: (@MainActor () -> Bool)? = nil)
+    {
         let key = ObjectIdentifier(menu)
         guard self.openMenus[key] != nil else { return }
         guard !self.isHostedSubviewMenu(menu) else { return }
+        let stillSelected: @MainActor () -> Bool = { [weak self, weak menu] in
+            guard let self, let menu else { return false }
+            guard isCurrent?() ?? true else { return false }
+            if let selection = self.resolvedMergedMenuSelection(
+                enabledProviders: self.store.enabledFirstPartyProvidersForDisplay())
+            {
+                return selection == .provider(provider.instanceID)
+            }
+            return self.menuProvider(for: menu) == provider
+        }
+        // Late account data must not replace a newer provider/Overview selection request.
+        guard stillSelected() else { return }
         self.invalidateMenus(refreshOpenMenus: false, allowStaleContentDuringDataRefresh: true)
-        self.scheduleOpenMenuRebuildIfStillVisible(menu, provider: provider)
+        self.scheduleTrackingMenuRebuildIfStillVisible(menu, provider: provider, beforeRebuild: stillSelected)
     }
 
     func rebuildOpenMenuIfStillVisible(_ menu: NSMenu, provider: UsageProvider?) {

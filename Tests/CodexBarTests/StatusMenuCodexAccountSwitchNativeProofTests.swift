@@ -1,332 +1,244 @@
 import AppKit
 import CodexBarCore
 import Foundation
+import Vision
 import XCTest
 @testable import CodexBar
 
-/// Native rendering proof for #3709: when the env var is set, runs the real account-switch
-/// scheduling path with menu card rendering enabled on a live AppKit process and captures
-/// before/after PNGs of the usage card plus a transcript. Skipped in the normal suite.
+/// Opt-in proof of the attached account card during real AppKit menu tracking, using synthetic accounts only.
 @MainActor
 final class StatusMenuCodexAccountSwitchNativeProofTests: XCTestCase {
     func test_accountSwitchRendersFetchedUsageInStillOpenCard() async throws {
         let environment = ProcessInfo.processInfo.environment
-        guard let proofDirectory = environment["CODEXBAR_ACCOUNT_SWITCH_PROOF_DIR"] else {
-            throw XCTSkip("Set CODEXBAR_ACCOUNT_SWITCH_PROOF_DIR to capture the native account-switch proof")
+        guard let path = environment["CODEXBAR_ACCOUNT_SWITCH_PROOF_DIR"] else {
+            throw XCTSkip("Set CODEXBAR_ACCOUNT_SWITCH_PROOF_DIR for synthetic native menu proof")
         }
         guard environment["CODEXBAR_SUPPRESS_TEST_KEYCHAIN_ACCESS"] == "1",
+              environment[CodexCredentialFileAccess.isolationEnvironmentKey] == "1",
+              environment["CODEXBAR_TEST_SESSION_FILE_ISOLATION"] == "1",
               environment["CODEXBAR_ALLOW_TEST_KEYCHAIN_ACCESS"] != "1"
-        else { return XCTFail("Native proof requires keychain prompt suppression") }
-
+        else { return XCTFail("Native proof requires credential and session isolation") }
+        let output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let fixture = try CodexAccountMenuPhaseFixture()
+        var mayCleanFixture = true
+        defer { if mayCleanFixture { fixture.cleanup() } }
+        let app = NSApplication.shared
+        guard app.delegate == nil else { return XCTFail("Use a standalone signed test host") }
+        let oldPolicy = app.activationPolicy()
+        let previousApp = NSWorkspace.shared.frontmostApplication
+        _ = app.setActivationPolicy(.regular)
+        app.finishLaunching()
+        let previousRendering = StatusItemController.menuCardRenderingEnabled
+        let previousRefresh = StatusItemController.menuRefreshEnabled
         StatusItemController.menuCardRenderingEnabled = true
         StatusItemController.setMenuRefreshEnabledForTesting(true)
-        defer { StatusItemController.setMenuRefreshEnabledForTesting(false) }
-
-        let suite = "StatusMenuCodexAccountSwitchNativeProofTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        let settings = SettingsStore(
-            userDefaults: defaults,
-            configStore: testConfigStore(suiteName: suite),
-            zaiTokenStore: NoopZaiTokenStore(),
-            syntheticTokenStore: NoopSyntheticTokenStore())
-        settings.statusChecksEnabled = false
-        settings.refreshFrequency = .manual
-        settings.mergeIcons = true
-        settings.selectedMenuProvider = .codex
-        settings.multiAccountMenuLayout = .segmented
-        let registry = ProviderRegistry.shared
-        for provider in UsageProvider.allCases {
-            guard let metadata = registry.metadata[provider] else { continue }
-            settings.setProviderEnabled(
-                provider: provider,
-                metadata: metadata,
-                enabled: provider == .codex || provider == .claude)
-        }
-
-        let managedAccountID = try XCTUnwrap(UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-111111111111"))
-        let managedAccount = ManagedCodexAccount(
-            id: managedAccountID,
-            email: "managed@example.com",
-            managedHomePath: "/tmp/managed-home",
-            createdAt: 1,
-            updatedAt: 2,
-            lastAuthenticatedAt: 2)
-        let storeURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let managedStore = FileManagedCodexAccountStore(fileURL: storeURL)
-        try managedStore.storeAccounts(ManagedCodexAccountSet(
-            version: FileManagedCodexAccountStore.currentVersion,
-            accounts: [managedAccount]))
         defer {
-            settings._test_managedCodexAccountStoreURL = nil
-            settings._test_liveSystemCodexAccount = nil
-            try? FileManager.default.removeItem(at: storeURL)
+            StatusItemController.menuCardRenderingEnabled = previousRendering
+            StatusItemController.setMenuRefreshEnabledForTesting(previousRefresh)
+            _ = app.setActivationPolicy(oldPolicy)
+            previousApp?.activate()
         }
-
-        settings._test_managedCodexAccountStoreURL = storeURL
-        settings._test_liveSystemCodexAccount = ObservedSystemCodexAccount(
-            email: "live@example.com",
-            codexHomePath: "/Users/test/.codex",
-            observedAt: Date())
-        settings.codexActiveSource = .liveSystem
-
-        let fetcher = UsageFetcher()
-        let store = UsageStore(fetcher: fetcher, browserDetection: BrowserDetection(cacheTTL: 0), settings: settings)
-        store._setSnapshotForTesting(Self.snapshot(email: "live@example.com", percent: 11), provider: .codex)
-        store.lastCodexAccountScopedRefreshGuard = store.currentCodexAccountScopedRefreshGuard(
-            preferCurrentSnapshot: false)
-        let blocker = AccountSwitchProofFetchBlocker()
-        let baseSpec = try XCTUnwrap(store.providerSpecs[.codex])
-        let strategy = AccountSwitchProofFetchStrategy(blocker: blocker)
-        let baseDescriptor = baseSpec.descriptor
-        let descriptor = ProviderDescriptor(
-            id: .codex,
-            metadata: baseDescriptor.metadata,
-            branding: baseDescriptor.branding,
-            tokenCost: baseDescriptor.tokenCost,
-            fetchPlan: ProviderFetchPlan(
-                sourceModes: [.auto, .cli, .oauth],
-                pipeline: ProviderFetchPipeline { _ in [strategy] }),
-            cli: baseDescriptor.cli)
-        store.providerSpecs[.codex] = ProviderSpec(
-            style: baseSpec.style,
-            isEnabled: baseSpec.isEnabled,
-            descriptor: descriptor,
-            makeFetchContext: baseSpec.makeFetchContext)
-
-        let controller = StatusItemController(
-            store: store,
-            settings: settings,
-            account: fetcher.loadAccountInfo(),
-            updater: DisabledUpdaterController(),
-            preferencesSelection: PreferencesSelection(),
-            statusBar: .system)
+        let controller = fixture.makeController()
         defer { controller.releaseStatusItemsForTesting() }
-
-        let menu = controller.makeMenu()
-        controller.menuWillOpen(menu)
-        let menuKey = ObjectIdentifier(menu)
-        controller.openMenus[menuKey] = menu
-        let switcher = try XCTUnwrap(menu.items.compactMap { $0.view as? CodexAccountSwitcherView }.first)
-        let managedVisibleAccount = try XCTUnwrap(settings.codexVisibleAccountProjection.visibleAccounts
-            .first { $0.storedAccountID == managedAccountID })
-
-        var transcript: [String] = []
-        func publishedEmail() -> String {
-            store.snapshots[.codex]?.identity?.accountEmail ?? "<nil>"
+        XCTAssertNil(controller._test_openMenuRebuildObserver)
+        XCTAssertNil(controller._test_openMenuRefreshYieldOverride)
+        let menu = try XCTUnwrap(controller.mergedMenu)
+        let driver = try CodexAccountSwitchTrackingDriver(
+            fixture: fixture,
+            controller: controller,
+            menu: menu,
+            output: output)
+        let timer = Timer(timeInterval: 0.1, repeats: true) { _ in
+            MainActor.assumeIsolated { driver.tick() }
         }
-        var parentRebuilds = 0
-        controller._test_openMenuRebuildObserver = { rebuiltMenu in
-            guard rebuiltMenu === menu else { return }
-            parentRebuilds += 1
+        RunLoop.main.add(timer, forMode: .common)
+        defer { timer.invalidate() }
+        app.activate(ignoringOtherApps: true)
+        let button = try XCTUnwrap(controller.statusItem.button)
+        mayCleanFixture = false
+        await withCheckedContinuation { continuation in
+            // Enter AppKit from its run loop after the async test releases the main actor.
+            ProviderSwitcherTrackingRunLoopScheduler.schedule {
+                button.performClick(nil)
+                continuation.resume()
+            }
         }
-        defer { controller._test_openMenuRebuildObserver = nil }
-
-        transcript.append("before select: published email \(publishedEmail())")
-        try Self.writePNG(
-            Self.renderFirstMenuCardPNG(menu: menu, controller: controller),
-            to: proofDirectory,
-            name: "before-account-switch.png")
-        transcript.append("before PNG captured")
-
-        switcher._test_selectAccount(id: managedVisibleAccount.id)
-        transcript.append("selected managed account; published email \(publishedEmail())")
-
-        // Drain the pre-fetch rebuilds triggered by selection and the early refresh phases. The
-        // selection's own switcher rebuild is RunLoop-scheduled and closes hosted submenus by
-        // design, so wait until every close-flagged rebuild has fully drained before planting
-        // the user's chart submenu.
-        let prefetchDeadline = ContinuousClock.now + .seconds(5)
-        while controller.menuNeedsRefresh(menu)
-            || !controller.openMenuRebuildsClosingHostedSubviewMenus.isEmpty,
-            ContinuousClock.now < prefetchDeadline
-        {
-            Self.pumpMainRunLoop(for: 0.01)
-            await Task.yield()
+        timer.invalidate()
+        driver.trackingReturned = true
+        controller.releaseStatusItemsForTesting()
+        fixture.gate.release()
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !fixture.gate.completed, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
         }
-        XCTAssertTrue(
-            controller.openMenuRebuildsClosingHostedSubviewMenus.isEmpty,
-            "switcher rebuilds must have drained before the chart submenu is opened")
-        let rebuildsBeforeFetch = parentRebuilds
-        transcript.append("pre-fetch drained: published email \(publishedEmail()); rebuilds \(rebuildsBeforeFetch)")
-
-        // While the account-scoped fetch is in flight, the user opens a hosted chart submenu
-        // from the still-open parent menu. It must survive the delayed rebuild.
-        let submenu = controller.makeHostedSubviewPlaceholderMenu(
-            chartID: StatusItemController.costHistoryChartID,
-            provider: .codex)
-        controller.menuWillOpen(submenu)
-        let submenuKey = ObjectIdentifier(submenu)
-        XCTAssertTrue(controller.openMenus[submenuKey] === submenu, "hosted submenu must be tracked")
-
-        // The account-scoped fetch completes while both menus stay open.
-        await blocker.waitUntilStarted()
-        blocker.resume(with: .success(Self.snapshot(email: "managed@example.com", percent: 17)))
-        transcript.append("fetch resumed with managed@example.com snapshot (17%)")
-
-        let publishDeadline = ContinuousClock.now + .seconds(5)
-        while store.snapshots[.codex]?.identity?.accountEmail != "managed@example.com",
-            ContinuousClock.now < publishDeadline
-        {
-            await Task.yield()
+        if fixture.gate.completed {
+            await fixture.store.widgetSnapshotPersistTask?.value
+            mayCleanFixture = true
         }
-        let submenuStillOpen = controller.openMenus[submenuKey] === submenu
-        transcript.append("after fetch: published email \(publishedEmail())")
-        transcript.append("hosted submenu still open after fetch: \(submenuStillOpen)")
-        transcript.append("parent rebuilds while submenu open: \(parentRebuilds - rebuildsBeforeFetch)")
-        XCTAssertTrue(submenuStillOpen, "open hosted submenu must survive the delayed rebuild")
-
-        // Closing the chart reconciles the deferred parent rebuild, landing the fetched usage
-        // in the card without closing the parent menu.
-        controller.menuDidClose(submenu)
-        let reconcileDeadline = ContinuousClock.now + .seconds(5)
-        while parentRebuilds <= rebuildsBeforeFetch, ContinuousClock.now < reconcileDeadline {
-            Self.pumpMainRunLoop(for: 0.01)
-            await Task.yield()
-        }
-        transcript.append("after submenu close: total parent rebuilds \(parentRebuilds)")
-
-        try Self.writePNG(
-            Self.renderFirstMenuCardPNG(menu: menu, controller: controller),
-            to: proofDirectory,
-            name: "after-account-switch.png")
-        transcript.append("after PNG captured")
-
-        try (transcript.joined(separator: "\n") + "\n").write(
-            to: URL(fileURLWithPath: proofDirectory, isDirectory: true)
-                .appendingPathComponent("transcript.txt"),
-            atomically: true,
-            encoding: .utf8)
-
-        // The fetched usage for the new account must be published and rendered without closing
-        // the menu, and the hosted submenu must not have been dismissed by the rebuild.
-        XCTAssertEqual(publishedEmail(), "managed@example.com")
-        XCTAssertTrue(submenuStillOpen, "open hosted submenu must survive the delayed rebuild")
-        XCTAssertTrue(controller.openMenus[menuKey] === menu, "parent menu must stay open throughout")
-        XCTAssertTrue(menu.items.contains { $0.view != nil }, "usage card view must still be planted")
-        XCTAssertGreaterThan(
-            parentRebuilds, rebuildsBeforeFetch,
-            "deferred parent rebuild must land after the hosted submenu closes")
-    }
-
-    private static func snapshot(email: String, percent: Double) -> UsageSnapshot {
-        UsageSnapshot(
-            primary: RateWindow(
-                usedPercent: percent,
-                windowMinutes: 300,
-                resetsAt: Date().addingTimeInterval(300),
-                resetDescription: nil),
-            secondary: RateWindow(
-                usedPercent: percent,
-                windowMinutes: 10080,
-                resetsAt: Date().addingTimeInterval(86400),
-                resetDescription: nil),
-            updatedAt: Date(),
-            identity: ProviderIdentitySnapshot(
-                providerID: .codex,
-                accountEmail: email,
-                accountOrganization: nil,
-                loginMethod: "Plus"))
-    }
-
-    private static func renderFirstMenuCardPNG(menu: NSMenu, controller: StatusItemController) -> Data? {
-        controller.refreshMenuCardHeights(in: menu)
-        for item in menu.items {
-            guard let view = item.view else { continue }
-            let width = max(view.fittingSize.width, StatusItemController.menuCardBaseWidth)
-            let height = max(view.fittingSize.height, view.frame.height, 1)
-            view.frame = CGRect(origin: .zero, size: NSSize(width: width, height: height))
-            let window = NSWindow(
-                contentRect: view.frame,
-                styleMask: [.borderless],
-                backing: .buffered,
-                defer: false)
-            window.isReleasedWhenClosed = false
-            window.contentView = view
-            defer { window.contentView = nil; window.close() }
-            window.layoutIfNeeded()
-            view.layoutSubtreeIfNeeded()
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-            guard let representation = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
-            view.cacheDisplay(in: view.bounds, to: representation)
-            return representation.representation(using: .png, properties: [:])
-        }
-        return nil
-    }
-
-    /// `RunLoop.run(until:)` is unavailable from async contexts; wrap it in a synchronous
-    /// helper so async test loops can pump RunLoop-scheduled menu work (CFRunLoopPerformBlock).
-    private static func pumpMainRunLoop(for interval: TimeInterval) {
-        RunLoop.main.run(until: Date().addingTimeInterval(interval))
-    }
-
-    private static func writePNG(_ data: Data?, to proofDirectory: String, name: String) throws {
-        let url = URL(fileURLWithPath: proofDirectory, isDirectory: true).appendingPathComponent(name)
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true)
-        if let data {
-            try data.write(to: url, options: .atomic)
-        } else {
-            try Data("render failed".utf8).write(to: url, options: .atomic)
-        }
+        try driver.writeReceipt()
+        XCTAssertEqual(fixture.gate.startCount, 1, "A later refresh must not supply the expected card")
+        XCTAssertFalse(fixture.gate.requestedUnexpectedProvider)
+        XCTAssertTrue(fixture.gate.completed, "Keep fixture isolation alive until the entire action finishes")
+        XCTAssertTrue(driver.selectedRenderedButton, "The actual attached account button must receive its action")
+        XCTAssertTrue(driver.observedPendingFetch, "The synthetic fetch must remain held during menu tracking")
+        XCTAssertTrue(driver.capturedAfter, "The still-open attached B card must show 17% before tracking ends")
+        XCTAssertNil(driver.failure)
     }
 }
 
 @MainActor
-private final class AccountSwitchProofFetchBlocker {
-    private var waiters: [CheckedContinuation<Result<UsageSnapshot, Error>, Never>] = []
-    private var startedWaiters: [CheckedContinuation<Void, Never>] = []
-    private var startCount = 0
+private final class CodexAccountSwitchTrackingDriver {
+    private let fixture: CodexAccountMenuPhaseFixture
+    private let controller: StatusItemController
+    private let menu: NSMenu
+    private let output: URL
+    private let targetID: String
+    private var ticks = 0
+    private var releasedAtTick: Int?
+    private var receipts: [[String: Any]] = []
+    var trackingReturned = false
+    private(set) var selectedRenderedButton = false
+    private(set) var observedPendingFetch = false
+    private(set) var capturedAfter = false
+    private(set) var failure: String?
 
-    func awaitResult() async throws -> UsageSnapshot {
-        let result = await withCheckedContinuation { continuation in
-            self.waiters.append(continuation)
-            self.startCount += 1
-            for waiter in self.startedWaiters {
-                waiter.resume()
+    init(
+        fixture: CodexAccountMenuPhaseFixture,
+        controller: StatusItemController,
+        menu: NSMenu,
+        output: URL) throws
+    {
+        self.fixture = fixture
+        self.controller = controller
+        self.menu = menu
+        self.output = output
+        self.targetID = try fixture.managedVisibleAccount().id
+    }
+
+    func tick() {
+        self.ticks += 1
+        do {
+            guard !self.trackingReturned,
+                  self.controller.openMenus[ObjectIdentifier(self.menu)] === self.menu
+            else { throw ProofFailure.menuNotTracking }
+            if self.ticks > 300 { throw ProofFailure.deadline }
+            if !self.selectedRenderedButton {
+                guard self.ticks >= 5 else { return }
+                guard !self.fixture.gate.entered else { throw ProofFailure.unexpectedFetch }
+                let before = try self.capture(label: "before").replacingOccurrences(of: " ", with: "").lowercased()
+                guard before.contains("account-a@example.invalid"), before.contains("11%") else {
+                    throw ProofFailure.initialCardMismatch
+                }
+                let switcher = try XCTUnwrap(self.menu.items.compactMap { $0.view as? CodexAccountSwitcherView }.first)
+                let button = try XCTUnwrap(Self.descendants(of: switcher).compactMap { $0 as? NSButton }
+                    .first { $0.identifier?.rawValue == self.targetID })
+                guard button.window != nil, button.isEnabled else { throw ProofFailure.detachedCard }
+                self.selectedRenderedButton = true
+                button.performClick(nil)
+                return
             }
-            self.startedWaiters.removeAll()
+            if self.releasedAtTick == nil {
+                guard self.fixture.gate.entered, self.ticks >= 10 else { return }
+                guard self.fixture.gate.startCount == 1 else { throw ProofFailure.unexpectedFetch }
+                self.observedPendingFetch = true
+                self.record(label: "pending", text: "")
+                self.releasedAtTick = self.ticks
+                self.fixture.gate.release()
+                return
+            }
+            guard self.fixture.store.snapshots[.codex]?.primary?.usedPercent == 17,
+                  self.fixture.settings.codexVisibleAccountProjection.activeVisibleAccountID == self.targetID,
+                  self.ticks.isMultiple(of: 10)
+            else { return }
+            let text = try self.capture(label: "after")
+            let compact = text.replacingOccurrences(of: " ", with: "").lowercased()
+            if compact.contains("17%"), compact.contains("account-b@example.invalid") {
+                self.capturedAfter = true
+                self.menu.cancelTrackingWithoutAnimation()
+            } else if self.ticks - (self.releasedAtTick ?? self.ticks) > 120 {
+                throw ProofFailure.cardDidNotUpdate
+            }
+        } catch {
+            self.failure = String(describing: error)
+            self.fixture.gate.release()
+            self.menu.cancelTrackingWithoutAnimation()
         }
-        return try result.get()
     }
 
-    func waitUntilStarted() async {
-        if self.startCount > 0 { return }
-        await withCheckedContinuation { continuation in
-            self.startedWaiters.append(continuation)
+    func writeReceipt() throws {
+        let data: [String: Any] = [
+            "syntheticOnly": true,
+            "selectedRenderedButton": self.selectedRenderedButton,
+            "observedPendingFetch": self.observedPendingFetch,
+            "capturedAfter": self.capturedAfter,
+            "providerRefreshCount": self.fixture.gate.startCount,
+            "scopedRefreshCompleted": self.fixture.gate.completed,
+            "unexpectedProviderRequest": self.fixture.gate.requestedUnexpectedProvider,
+            "failure": self.failure as Any? ?? NSNull(),
+            "phases": self.receipts,
+        ]
+        try JSONSerialization.data(withJSONObject: data, options: [.prettyPrinted, .sortedKeys])
+            .write(to: self.output.appendingPathComponent("receipt.json"), options: .atomic)
+    }
+
+    private func record(label: String, text: String) {
+        var receipt = MergedMenuScrollingSwapNativeProofTests.phaseReceipt(
+            menu: self.menu, label: label, settings: self.fixture.settings)
+        receipt["trackingReturned"] = self.trackingReturned
+        receipt["selectedAccount"] = self.fixture.settings.codexVisibleAccountProjection.activeVisibleAccountID
+        receipt["publishedEmail"] = self.fixture.store.snapshots[.codex]?.accountEmail(for: .codex)
+        receipt["publishedUsedPercent"] = self.fixture.store.snapshots[.codex]?.primary?.usedPercent
+        receipt["cardText"] = text
+        self.receipts.append(receipt)
+    }
+
+    private func capture(label: String) throws -> String {
+        let menuURL = self.output.appendingPathComponent("\(label)-menu-\(UUID().uuidString).png")
+        MergedMenuScrollingSwapNativeProofTests.capture(menu: self.menu, to: menuURL)
+        let image = try XCTUnwrap(NSImage(contentsOf: menuURL)?.cgImage(forProposedRect: nil, context: nil, hints: nil))
+        try Data(contentsOf: menuURL).write(
+            to: self.output.appendingPathComponent("\(label)-menu.png"), options: .atomic)
+        guard let card = self.menu.items.first(where: {
+            let id = $0.representedObject as? String ?? ""
+            return id.hasPrefix("menuCard") && $0.view?.window != nil
+        })?.view else {
+            self.record(label: label, text: "")
+            return ""
         }
-    }
-
-    func resume(with result: Result<UsageSnapshot, Error>) {
-        for waiter in self.waiters {
-            waiter.resume(returning: result)
+        let window = try XCTUnwrap(card.window)
+        guard window.isVisible, card.bounds.width > 0, card.bounds.height > 0 else {
+            throw ProofFailure.detachedCard
         }
-        self.waiters.removeAll()
-    }
-}
-
-private struct AccountSwitchProofFetchStrategy: ProviderFetchStrategy {
-    let blocker: AccountSwitchProofFetchBlocker
-
-    var id: String {
-        "account-switch-proof-codex"
-    }
-
-    var kind: ProviderFetchKind {
-        .cli
-    }
-
-    func isAvailable(_: ProviderFetchContext) async -> Bool {
-        true
-    }
-
-    func fetch(_: ProviderFetchContext) async throws -> ProviderFetchResult {
-        let snapshot = try await self.blocker.awaitResult()
-        return self.makeResult(usage: snapshot, sourceLabel: "account-switch-proof-codex")
+        let frame = card.convert(card.bounds, to: nil)
+        let scaleX = CGFloat(image.width) / window.frame.width
+        let scaleY = CGFloat(image.height) / window.frame.height
+        let cropRect = CGRect(
+            x: frame.minX * scaleX,
+            y: CGFloat(image.height) - frame.maxY * scaleY,
+            width: frame.width * scaleX,
+            height: frame.height * scaleY).integral
+        let crop = try XCTUnwrap(image.cropping(to: cropRect))
+        let png = try XCTUnwrap(NSBitmapImageRep(cgImage: crop).representation(using: .png, properties: [:]))
+        try png.write(to: self.output.appendingPathComponent("\(label)-card.png"), options: .atomic)
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        try VNImageRequestHandler(cgImage: crop).perform([request])
+        let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+        self.record(label: label, text: text)
+        return text
     }
 
-    func shouldFallback(on _: Error, context _: ProviderFetchContext) -> Bool {
-        false
+    private static func descendants(of view: NSView) -> [NSView] {
+        view.subviews.flatMap { [$0] + self.descendants(of: $0) }
+    }
+
+    private enum ProofFailure: Error {
+        case menuNotTracking
+        case deadline
+        case detachedCard
+        case cardDidNotUpdate
+        case initialCardMismatch
+        case unexpectedFetch
     }
 }

@@ -792,68 +792,6 @@ extension StatusMenuTests {
     }
 
     @Test
-    func `scheduled root data rebuild marks menu stale and reconciles after hosted submenu closes`() async throws {
-        self.disableMenuCardsForTesting()
-        let settings = self.makeSettings()
-        settings.statusChecksEnabled = false
-        settings.refreshFrequency = .manual
-        settings.mergeIcons = false
-
-        let store = self.makeCodexStore(settings: settings, dashboardAuthorized: false)
-        let controller = StatusItemController(
-            store: store,
-            settings: settings,
-            account: UsageFetcher().loadAccountInfo(),
-            updater: DisabledUpdaterController(),
-            preferencesSelection: PreferencesSelection(),
-            statusBar: self.makeStatusBarForTesting())
-        defer { controller.releaseStatusItemsForTesting() }
-
-        let menu = controller.makeMenu()
-        controller.menuWillOpen(menu)
-        let menuKey = ObjectIdentifier(menu)
-        controller.openMenus[menuKey] = menu
-
-        // Simulate a hosted chart submenu the user opened from the parent menu.
-        let submenu = controller.makeHostedSubviewPlaceholderMenu(
-            chartID: StatusItemController.costHistoryChartID,
-            provider: .codex)
-        let submenuKey = ObjectIdentifier(submenu)
-        controller.openMenus[submenuKey] = submenu
-        controller.menuRefreshEnabledOverrideForTesting = true
-
-        var rebuildCount = 0
-        controller._test_openMenuRebuildObserver = { rebuiltMenu in
-            guard rebuiltMenu === menu else { return }
-            rebuildCount += 1
-        }
-        defer { controller._test_openMenuRebuildObserver = nil }
-
-        controller.menuVersions[menuKey] = controller.menuContentVersion
-        let versionBefore = try #require(controller.menuVersions[menuKey])
-        controller.scheduleOpenRootMenuDataRebuildIfStillVisible(menu, provider: .codex)
-
-        for _ in 0..<20 {
-            await Task.yield()
-        }
-
-        // The fetched data marks the parent stale while the hosted submenu stays open and untouched;
-        // the rebuild itself is skipped until tracking permits it.
-        #expect(controller.menuVersions[menuKey] == versionBefore)
-        #expect(controller.menuNeedsRefresh(menu))
-        #expect(controller.openMenus[submenuKey] === submenu)
-        #expect(rebuildCount == 0)
-
-        // Closing the hosted submenu reconciles the stale parent.
-        controller.menuDidClose(submenu)
-        for _ in 0..<20 where rebuildCount == 0 {
-            await Task.yield()
-        }
-        #expect(rebuildCount == 1)
-        #expect(controller.menuVersions[menuKey] == controller.menuContentVersion)
-    }
-
-    @Test
     func `rapid switcher rebuild requests coalesce before populating open menu`() async {
         self.disableMenuCardsForTesting()
         let settings = self.makeSettings()

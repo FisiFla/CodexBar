@@ -1115,16 +1115,10 @@ extension StatusItemController {
                     allowDisabled: true,
                     phaseDidChange: { [weak controller, weak menu, settings] _ in
                         guard let controller, let menu else { return }
-                        guard settings.codexVisibleAccountProjection.activeVisibleAccountID == visibleAccountID
-                        else {
-                            return
+                        // Recheck account ownership when scheduling and when the tracking-safe rebuild runs.
+                        controller.scheduleOpenRootMenuDataRebuildIfStillVisible(menu, provider: .codex) {
+                            settings.codexVisibleAccountProjection.activeVisibleAccountID == visibleAccountID
                         }
-                        // Rebuild through a scheduled in-place rebuild: the generic refresh path defers
-                        // parent rebuilds while tracking, which left the freshly fetched usage unrendered
-                        // until the menu was reopened (#3709). The scheduled rebuild coalesces phases and
-                        // preserves open hosted subviews (it reconciles after they close instead of
-                        // dismissing them).
-                        controller.scheduleOpenRootMenuDataRebuildIfStillVisible(menu, provider: .codex)
                     })
             }
         }

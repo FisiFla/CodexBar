@@ -1,10 +1,24 @@
 # Changelog
 
-## 0.60.5 — Unreleased
+## 0.60.6 — Unreleased
+
+### Fixed
+- Codex: refresh the selected account card while its menu stays open, preserving hosted submenus and account ownership when delayed usage arrives (#3715, fixes #3709). Thanks @sandeep780049!
+- Sharing: retain recognized gateway model families in shared cards and copied statistics, preserving provider attribution and excluding raw namespaces and private model names (#3713). Thanks @Chipagosfinest!
+- Devin: honor the selected organization, exclude unrelated sites from browser session import, and prefer current decoded credentials over raw storage fallback data.
+- OpenRouter: distinguish invalid response data from network failures in optional credits, key quota, and Activity diagnostics, preserving usable data from the other sources (#3718). Thanks @Chipagosfinest!
+- OpenRouter: retain spend history when reported reasoning tokens exceed completion tokens, preserving the separate counters, input-plus-output totals, quota, and balance (#3717). Thanks @Chipagosfinest!
+- OpenRouter: ignore deprecated key rate-limit metadata, removing the misleading negative request limit and preserving valid quota and spend details when the deprecated field changes shape (#3720). Thanks @Chipagosfinest!
+
+## 0.60.5 — 2026-09-17
+
+### Highlights
+- **More reliable cost history:** publish validated Codex reporting windows sooner, preserve prior data during incomplete scans, and correct Claude cost estimates.
+- **Clearer usage meters:** recover Cursor Enterprise member budgets, Kimi Code API quotas, Copilot seat-credit bars, and OpenCode Go Monthly selection.
+- **Smoother everyday use:** improve update access, privacy, shared-card dates, and recovery from temporary provider failures.
 
 ### Fixed
 
-- Codex: rebuild the open account card when account-scoped refresh phases land, so switching accounts in the segmented layout shows the fetched usage without closing and reopening the menu (fixes #3709).
 - Codex costs: publish validated reporting windows during historical catch-up while retaining prior data for incomplete sources and preserving automatic power limits (#3669, related to #3508). Thanks @kernnel!
 - Codex: honor Hide Personal Info in the System Account submenu, keeping stable account labels and unchanged promotion actions (#3702, related to #3550). Thanks @zenibako!
 - Claude costs: apply the correct GPT long-context boundary, recalculate saved estimates, and preserve retained Codex history during the upgrade (#3684). Thanks @MoridinBG!
