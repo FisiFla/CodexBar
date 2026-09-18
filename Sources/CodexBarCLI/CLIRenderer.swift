@@ -583,6 +583,31 @@ enum CLIRenderer {
             let value = UsageFormatter.currencyString(balance.amount, currencyCode: balance.currencyCode)
             lines.append(self.labelValueLine(balance.label, value: value, useColor: useColor))
         }
+        guard let history = snapshot.costUsage else { return }
+        var values: [String] = []
+        if let amount = history.last30DaysCostUSD {
+            let value = UsageFormatter.currencyString(amount, currencyCode: history.currencyCode)
+            let provenance: String? = switch history.costProvenance {
+            case .vendorMetered: "reported"
+            case .listPriceEstimate: "estimated"
+            case .mixed: "includes estimates"
+            case .unknown: nil
+            }
+            values.append(provenance.map { "\(value) (\($0))" } ?? value)
+        }
+        if let tokens = history.last30DaysTokens {
+            let unit = tokens == 1 ? "token" : "tokens"
+            values.append("\(UsageFormatter.tokenCountString(tokens)) \(unit)")
+        }
+        guard !values.isEmpty else { return }
+        let label: String = if let custom = history.historyLabel,
+                               !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            custom
+        } else {
+            history.historyDays == 1 ? "Last 1 day" : "Last \(history.historyDays) days"
+        }
+        lines.append(self.labelValueLine(label, value: values.joined(separator: " · "), useColor: useColor))
     }
 
     // swiftlint:disable:next function_parameter_count

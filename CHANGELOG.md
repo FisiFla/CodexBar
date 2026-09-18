@@ -3,6 +3,7 @@
 ## 0.60.6 — Unreleased
 
 ### Fixed
+- CLI: show successful provider-supplied history in usage text and full terminal cards, including OpenRouter Activity spend and Grok token totals, while preserving source periods, currencies, known zero values, and cost provenance (related to #3717). Thanks @jhairabet-udr!
 - OpenRouter: retain spend history when reported reasoning tokens exceed completion tokens, preserving the separate counters, input-plus-output totals, quota, and balance (#3717). Thanks @Chipagosfinest!
 - OpenRouter: ignore deprecated key rate-limit metadata, removing the misleading negative request limit and preserving valid quota and spend details when the deprecated field changes shape (#3720). Thanks @Chipagosfinest!
 
