@@ -110,14 +110,14 @@ struct StatusMenuAccountDataRefreshTests {
     @Test
     func `queued account data is discarded when account ownership changes before execution`() throws {
         try self.withMenu { _, controller, menu in
-            var selectedAccount = "account-a"
+            let selection = AccountSelection()
             var rebuilds = 0
             controller._test_openMenuRebuildObserver = { _ in rebuilds += 1 }
             defer { controller._test_openMenuRebuildObserver = nil }
             controller.scheduleOpenRootMenuDataRebuildIfStillVisible(menu, provider: .codex) {
-                selectedAccount == "account-a"
+                selection.id == "account-a"
             }
-            selectedAccount = "account-b"
+            selection.id = "account-b"
             Self.drainTracking()
             #expect(rebuilds == 0)
             #expect(controller.menuNeedsRefresh(menu))
@@ -136,6 +136,11 @@ struct StatusMenuAccountDataRefreshTests {
             #expect(rebuilds == 0)
             #expect(controller.openMenus[ObjectIdentifier(menu)] == nil)
         }
+    }
+
+    @MainActor
+    private final class AccountSelection {
+        var id = "account-a"
     }
 
     private func withMenu(
