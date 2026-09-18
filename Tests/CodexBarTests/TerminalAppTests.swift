@@ -180,7 +180,7 @@ struct TerminalAppTests {
             command: "printf \"hello\"\nnext",
             directory: #"/tmp/dir "quoted"\child"#)
 
-        #expect(config == #"""
+        #expect(config == WarpTerminalConfig.marker + #"""
         name = "codexbar_test"
 
         [[panes]]
@@ -428,7 +428,7 @@ struct TerminalAppTests {
 
     @Test
     @MainActor
-    func `Warp temporary creation failure removes only its generated path`() async throws {
+    func `Warp temporary creation failure preserves a preexisting directory`() async throws {
         let home = Self.temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
         let identifier = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
@@ -457,7 +457,7 @@ struct TerminalAppTests {
         #expect(result == .fallback)
         #expect(openCount == 0)
         #expect(scripts.count == 1)
-        #expect(FileManager.default.fileExists(atPath: temporaryURL.path) == false)
+        #expect(FileManager.default.fileExists(atPath: temporaryURL.path))
         #expect(FileManager.default.fileExists(atPath: unrelatedURL.path))
     }
 

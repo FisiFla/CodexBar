@@ -144,7 +144,7 @@ enum TerminalApp: String, CaseIterable, Identifiable {
     }
 
     static func warpTabConfig(name: String, command: String, directory: String) -> String {
-        """
+        WarpTerminalConfig.marker + """
         name = "\(self.escapeForTOML(name))"
 
         [[panes]]
@@ -235,9 +235,25 @@ struct TerminalLauncher {
         return await self.launchOnce(.terminal, command: command) ? .fallback : .failed
     }
 
+    func cleanUpAbandonedConfigs(now: Date = Date(), includeRecent: Bool = true) {
+        let directory = self.dependencies.homeDirectory.appendingPathComponent(".warp/tab_configs")
+        for candidate in WarpTerminalConfig.candidates(in: directory) {
+            let remaining = WarpTerminalConfig.lifetime - max(0, now.timeIntervalSince(candidate.modifiedAt))
+            if remaining <= 0 {
+                WarpTerminalConfig.remove(candidate)
+            } else if includeRecent {
+                // A quick restart must still give the receiving app time to read a fresh config.
+                self.dependencies.scheduleCleanup(.seconds(remaining)) {
+                    WarpTerminalConfig.remove(candidate)
+                }
+            }
+        }
+    }
+
     private func launchOnce(_ terminal: TerminalApp, command: String) async -> Bool {
         // Provider-specific by design: Warp terminal launches require app-targeted URI routing.
         if terminal == .warp {
+            self.cleanUpAbandonedConfigs(includeRecent: false)
             guard let applicationURL = dependencies.applicationURL(terminal.bundleIdentifier) else {
                 return false
             }
@@ -273,17 +289,13 @@ struct TerminalLauncher {
                 name: stem,
                 command: command,
                 directory: self.dependencies.homeDirectory.path)
-            guard FileManager.default.createFile(
-                atPath: temporaryURL.path,
-                contents: Data(config.utf8),
-                attributes: [.posixPermissions: NSNumber(value: 0o600)])
-            else { throw TerminalLaunchError.configFileCreationFailed }
-            try FileManager.default.moveItem(at: temporaryURL, to: configURL)
+            try WarpTerminalConfig.write(Data(config.utf8), temporaryURL: temporaryURL, configURL: configURL)
         } catch {
-            try? FileManager.default.removeItem(at: temporaryURL)
             Self.logLaunchError(error, terminal: terminal)
             return false
         }
+
+        guard let candidate = WarpTerminalConfig.candidate(at: configURL) else { return false }
 
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
@@ -293,18 +305,12 @@ struct TerminalLauncher {
 
         do {
             try await self.dependencies.open([launchURL], applicationURL, configuration)
-            self.dependencies.scheduleCleanup(.seconds(60)) {
-                do {
-                    try FileManager.default.removeItem(at: configURL)
-                } catch {
-                    CodexBarLog.logger(LogCategories.terminal).warning(
-                        "Failed to clean up Warp tab config",
-                        metadata: ["terminal": terminal.rawValue])
-                }
+            self.dependencies.scheduleCleanup(.seconds(WarpTerminalConfig.lifetime)) {
+                WarpTerminalConfig.remove(candidate)
             }
             return true
         } catch {
-            try? FileManager.default.removeItem(at: configURL)
+            WarpTerminalConfig.remove(candidate)
             Self.logLaunchError(error, terminal: terminal)
             return false
         }
@@ -333,9 +339,5 @@ struct TerminalLauncher {
                 "terminal": terminal.rawValue,
                 "error": String(describing: error),
             ])
-    }
-
-    private enum TerminalLaunchError: Error {
-        case configFileCreationFailed
     }
 }

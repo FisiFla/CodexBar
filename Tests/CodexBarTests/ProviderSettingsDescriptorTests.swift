@@ -578,6 +578,23 @@ struct ProviderSettingsDescriptorTests {
     }
 
     @Test
+    func `venice exposes usage source picker routing to web`() throws {
+        let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-venice")
+        let context = fixture.settingsContext(provider: .venice)
+
+        let implementation = VeniceProviderImplementation()
+        let pickers = implementation.settingsPickers(context: context)
+        #expect(pickers.contains(where: { $0.id == "venice-usage-source" }))
+
+        let modeContext = ProviderSourceModeContext(provider: .venice, settings: fixture.settings)
+        #expect(implementation.sourceMode(context: modeContext) == .auto)
+        fixture.settings.veniceUsageDataSource = .web
+        #expect(implementation.sourceMode(context: modeContext) == .web)
+        fixture.settings.veniceUsageDataSource = .api
+        #expect(implementation.sourceMode(context: modeContext) == .api)
+    }
+
+    @Test
     func `copilot budget secondary picker appears before cookie picker`() throws {
         let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-copilot-budget-pickers")
         fixture.settings.copilotBudgetExtrasEnabled = true
@@ -1285,6 +1302,45 @@ extension ProviderSettingsDescriptorTests {
             isEnabled: true,
             isRefreshing: false,
             modelPlaceholder: nil) == "No usage yet")
+    }
+
+    @Test
+    func `provider settings shows unlimited OpenRouter spend details instead of placeholder`() throws {
+        let usage = OpenRouterUsageSnapshot(
+            totalCredits: 50,
+            totalUsage: 20,
+            balance: 30,
+            usedPercent: 40,
+            keyDataFetched: true,
+            keyLimit: nil,
+            keyUsageDaily: 1.25,
+            keyUsageWeekly: 7.5,
+            keyUsageMonthly: 18.75,
+            updatedAt: OpenRouterLimitTestSupport.now)
+        let model = try OpenRouterLimitTestSupport.model(usage.toUsageSnapshot())
+        let content = ProviderMetricsInlineView.ContentState(model: model, infoRows: [])
+
+        #expect(model.metrics.isEmpty)
+        #expect(model.providerDetails.flatMap(\.rows).contains { $0.label == "This month" })
+        #expect(!content.showsPlaceholder)
+
+        let meteredModel = try OpenRouterLimitTestSupport.model(OpenRouterUsageSnapshot(
+            totalCredits: 50,
+            totalUsage: 20,
+            balance: 30,
+            usedPercent: 40,
+            keyDataFetched: true,
+            keyLimit: 25,
+            keyUsage: 10,
+            updatedAt: OpenRouterLimitTestSupport.now).toUsageSnapshot())
+        #expect(!meteredModel.metrics.isEmpty)
+        #expect(!ProviderMetricsInlineView.ContentState(model: meteredModel, infoRows: []).showsPlaceholder)
+
+        let emptyModel = try OpenRouterLimitTestSupport.model(UsageSnapshot(
+            primary: nil,
+            secondary: nil,
+            updatedAt: OpenRouterLimitTestSupport.now))
+        #expect(ProviderMetricsInlineView.ContentState(model: emptyModel, infoRows: []).showsPlaceholder)
     }
 
     @Test
