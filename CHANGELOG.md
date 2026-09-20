@@ -8,7 +8,7 @@
 
 ### Improved
 
-- Settings: simplify Homebrew update instructions in About with a selectable command row, an integrated copy control, and brief copy confirmation.
+- Settings: simplify Homebrew update instructions in About with a selectable command row, an integrated copy control, and brief copy confirmation (#3759).
 
 ### Fixed
 
