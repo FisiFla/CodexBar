@@ -10,6 +10,7 @@
 
 - Menu bar: assign each status item's stable identity before provider registration, preserving item reuse during reentrant updates (#3665). Thanks @Borisserz!
 - Codex costs: count only a paginated session's new usage, repairing inflated cached totals while preserving validated historical pricing across appends and interrupted scans (#3753). Thanks @anon5376!
+- Workspaces: reduce peak memory when reading large Codex histories by decoding stored rows without retaining their encoded copies.
 - Kimi: retain nonzero weekly and five-hour counts when a mixed legacy response includes conflicting zero ratios for the same quota windows (#3755, fixes #3754). Thanks @mudrii!
 
 ## 0.62.0 — 2026-09-19
