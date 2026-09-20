@@ -6,12 +6,21 @@
 
 - Widgets: select DeepSeek and OpenRouter, see their balances, and keep live update ages visible in small widgets (#3743). Thanks @brzvsk!
 
+### Improved
+
+- Settings: simplify Homebrew update instructions in About with a selectable command row, an integrated copy control, and brief copy confirmation (#3759).
+
 ### Fixed
 
+- Providers: prevent crashes on oversized Kimi, Chutes, MiniMax, and Perplexity usage values or durations while preserving usable quota data.
 - Menu bar: assign each status item's stable identity before provider registration, preserving item reuse during reentrant updates (#3665). Thanks @Borisserz!
+- Keychain: retry transient no-UI preflight failures within a bounded budget, recovering already-authorized reads without relaxing prompt or denial policies (#3630). Thanks @ysyyork!
 - Codex costs: count only a paginated session's new usage, repairing inflated cached totals while preserving validated historical pricing across appends and interrupted scans (#3753). Thanks @anon5376!
 - Workspaces: reduce peak memory when reading large Codex histories by decoding stored rows without retaining their encoded copies.
 - Kimi: retain nonzero weekly and five-hour counts when a mixed legacy response includes conflicting zero ratios for the same quota windows (#3755, fixes #3754). Thanks @mudrii!
+- Devin: keep organization names and internal IDs paired during browser import, avoiding requests for unrelated cached organizations.
+- Claude: require matching account emails for CLI Web enrichment instead of trusting organization display names alone.
+- Configuration: keep following the current config file when atomic replacements race watcher registration or occur inside a change callback.
 
 ## 0.62.0 — 2026-09-19
 
