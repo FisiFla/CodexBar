@@ -45,6 +45,7 @@ CodexBar can show usage for any Kilo organization the API key belongs to.
   organizations**.
 - Toggle the organizations you want to display alongside Personal. Personal is
   always shown.
+- Organization refreshes apply only to the configuration that started them. Changing credentials, source, or organization selections discards older results and errors; a current refresh still removes selections that are no longer available.
 - When at least one organization is enabled, the menu renders one Kilo card per
   enabled scope.
 - The CodexBar fetcher sends the standard `X-KILOCODE-ORGANIZATIONID` header on

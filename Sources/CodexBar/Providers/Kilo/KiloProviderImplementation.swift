@@ -3,6 +3,13 @@ import Foundation
 
 struct KiloProviderImplementation: ProviderImplementation {
     let id: UsageProvider = .kilo
+    private let fetchOrganizations: @Sendable (String) async throws -> [KiloOrganization]
+
+    init(fetchOrganizations: @escaping @Sendable (String) async throws -> [KiloOrganization] = {
+        try await KiloUsageFetcher.fetchOrganizations(apiKey: $0)
+    }) {
+        self.fetchOrganizations = fetchOrganizations
+    }
 
     @MainActor
     func observeSettings(_ settings: SettingsStore) {
@@ -121,6 +128,12 @@ struct KiloProviderImplementation: ProviderImplementation {
                 guard let settings else {
                     return .init(success: false, errorMessage: L("Settings unavailable."))
                 }
+                let revision = settings.providerConfigRevision(for: .kilo)
+                @MainActor
+                func canPublish() -> Bool {
+                    !Task.isCancelled && settings.providerConfigRevision(for: .kilo) == revision
+                }
+                guard canPublish() else { return .init(success: false, errorMessage: nil) }
                 let resolved: KiloResolvedBearerToken
                 do {
                     resolved = try KiloBearerTokenResolver.resolve(
@@ -134,16 +147,17 @@ struct KiloProviderImplementation: ProviderImplementation {
                     return .init(success: false, errorMessage: error.localizedDescription)
                 }
                 do {
-                    let orgs = try await KiloUsageFetcher.fetchOrganizations(apiKey: resolved.token)
-                    await MainActor.run {
-                        settings.setKiloKnownOrganizationsPruningEnabled(orgs)
-                    }
+                    let orgs = try await self.fetchOrganizations(resolved.token)
+                    guard canPublish() else { return .init(success: false, errorMessage: nil) }
+                    settings.setKiloKnownOrganizationsPruningEnabled(orgs)
                     return .init(success: true, errorMessage: nil)
                 } catch let error as LocalizedError {
+                    guard canPublish() else { return .init(success: false, errorMessage: nil) }
                     return .init(
                         success: false,
                         errorMessage: error.errorDescription ?? L("Failed to load organizations."))
                 } catch {
+                    guard canPublish() else { return .init(success: false, errorMessage: nil) }
                     return .init(success: false, errorMessage: error.localizedDescription)
                 }
             },
