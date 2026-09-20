@@ -142,11 +142,13 @@ extension PerplexityUsageSnapshot {
         guard used.isFinite, total.isFinite else { return nil }
         let roundedUsed = used.rounded()
         let truncatedTotal = total.rounded(.towardZero)
+        let normalizedUsed: Double = roundedUsed == 0 ? 0 : roundedUsed
+        let normalizedTotal: Double = truncatedTotal == 0 ? 0 : truncatedTotal
         let counts = String(
             format: "%.0f/%.0f",
             locale: Locale(identifier: "en_US_POSIX"),
-            roundedUsed == 0 ? 0 : roundedUsed,
-            truncatedTotal == 0 ? 0 : truncatedTotal)
+            normalizedUsed,
+            normalizedTotal)
         return "\(counts) \(unit)"
     }
 }
