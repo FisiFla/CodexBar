@@ -79,6 +79,34 @@ struct UserPluginRefreshTests {
     }
 
     @Test
+    func `reenabled plugin owns activity while its replacement waits`() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let first = Task { await fixture.store.refreshUserPlugin(fixture.id) }
+        try await fixture.transport.waitForRequests(1)
+        fixture.settings.setPluginEnabled(fixture.id, enabled: false)
+        fixture.store.clearDisabledProviderState(enabledProviders: Set(UsageProvider.allCases.map(\.instanceID)))
+        fixture.settings.setPluginEnabled(fixture.id, enabled: true)
+        var replacementEntered = false
+        let replacement = Task {
+            replacementEntered = true
+            await fixture.store.refreshUserPlugin(fixture.id)
+        }
+        while !replacementEntered {
+            await Task.yield()
+        }
+        #expect(fixture.store.refreshingProviders.contains(fixture.id))
+        await fixture.transport.finish(1, used: 10)
+        await first.value
+        #expect(fixture.store.refreshingProviders.contains(fixture.id))
+        try await fixture.transport.waitForRequests(2)
+        await fixture.transport.finish(2, used: 80)
+        await replacement.value
+        #expect(fixture.store.snapshots[fixture.id]?.primary?.usedPercent == 80)
+        #expect(!fixture.store.refreshingProviders.contains(fixture.id))
+    }
+
+    @Test
     func `cancelled plugin refresh does not publish a failure`() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }

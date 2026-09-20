@@ -36,8 +36,15 @@ extension UsageStore {
         }
 
         let request = self.providerRefreshCoordinator.beginReplacingRequest(for: instanceID)
+        self.providerRefreshCoordinator.beginActivity(for: instanceID)
+        self.refreshingProviders.insert(instanceID)
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
+            defer {
+                if self.providerRefreshCoordinator.endActivity(for: instanceID) {
+                    self.refreshingProviders.remove(instanceID)
+                }
+            }
             for predecessor in request.predecessorStates {
                 await predecessor.waitForTaskCompletion()
             }
@@ -58,15 +65,6 @@ extension UsageStore {
         let instanceID = plugin.manifest.id
         let enablementRevision = self.settings.providerEnablementRevision(forInstanceID: instanceID)
         let configRevision = self.settings.providerConfigRevision(forInstanceID: instanceID)
-        if self.providerRefreshCoordinator.beginActivity(for: instanceID) {
-            self.refreshingProviders.insert(instanceID)
-        }
-        defer {
-            if self.providerRefreshCoordinator.endActivity(for: instanceID) {
-                self.refreshingProviders.remove(instanceID)
-            }
-        }
-
         func canPublish() -> Bool {
             !Task.isCancelled &&
                 self.providerRefreshCoordinator.isCurrent(generation, for: instanceID) &&
