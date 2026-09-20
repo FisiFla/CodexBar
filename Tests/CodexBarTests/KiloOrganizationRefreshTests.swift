@@ -9,6 +9,43 @@ struct KiloOrganizationRefreshTests {
         case credential, credentialAndRestore, selection, catalog, source, enablement, cancellation
     }
 
+    @Test(arguments: [false, true], [false, true])
+    func `CLI credential changes outside settings invalidate organization discovery`(
+        removeCredential: Bool,
+        failure: Bool) async throws
+    {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let authFile = root.appendingPathComponent(".local/share/kilo/auth.json")
+        try FileManager.default.createDirectory(
+            at: authFile.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(#"{"kilo":{"access":"fixture-cli-a"}}"#.utf8).write(to: authFile)
+        let fixture = try Fixture(environment: ["HOME": root.path])
+        fixture.settings.kiloUsageDataSource = .cli
+        let revision = fixture.settings.providerConfigRevision(for: .kilo)
+        let request = Task { await fixture.descriptor.onRefresh() }
+        #expect(await fixture.loader.waitUntilStarted())
+        do {
+            if removeCredential {
+                try FileManager.default.removeItem(at: authFile)
+            } else {
+                try Data(#"{"kilo":{"access":"fixture-cli-b"}}"#.utf8).write(to: authFile, options: .atomic)
+            }
+        } catch {
+            await fixture.loader.finish(failure: true)
+            _ = await request.value
+            throw error
+        }
+        #expect(fixture.settings.providerConfigRevision(for: .kilo) == revision)
+        await fixture.loader.finish(failure: failure)
+        let outcome = await request.value
+        #expect(!outcome.success)
+        #expect(outcome.errorMessage == nil)
+        #expect(fixture.settings.kiloKnownOrganizations == [Fixture.alpha, Fixture.beta])
+        #expect(fixture.settings.kiloEnabledOrganizationIDs == [Fixture.alpha.id])
+    }
+
     @Test(arguments: Change.allCases, [false, true])
     func `obsolete organization results and errors leave current settings intact`(
         change: Change,
@@ -83,7 +120,7 @@ struct KiloOrganizationRefreshTests {
         let loader = GatedLoader()
         let descriptor: ProviderSettingsOrganizationsDescriptor
 
-        init() throws {
+        init(environment: [String: String] = [:]) throws {
             self.settings.kiloUsageDataSource = .api
             self.settings.kiloAPIToken = "fixture-token-a"
             self.settings.kiloKnownOrganizations = [Self.alpha, Self.beta]
@@ -104,7 +141,7 @@ struct KiloOrganizationRefreshTests {
                 setLastAppActiveRunAt: { _, _ in },
                 requestConfirmation: { _ in },
                 runLoginFlow: {})
-            let implementation = KiloProviderImplementation { [loader = self.loader] _ in
+            let implementation = KiloProviderImplementation(environment: environment) { [loader = self.loader] _ in
                 try await loader.load()
             }
             self.descriptor = try #require(implementation.settingsOrganizations(context: context))
