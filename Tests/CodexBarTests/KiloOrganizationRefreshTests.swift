@@ -141,9 +141,13 @@ struct KiloOrganizationRefreshTests {
                 setLastAppActiveRunAt: { _, _ in },
                 requestConfirmation: { _ in },
                 runLoginFlow: {})
-            let implementation = KiloProviderImplementation(environment: environment) { [loader = self.loader] _ in
-                try await loader.load()
-            }
+            var isolatedEnvironment = environment
+            isolatedEnvironment["HOME"] = environment["HOME"] ?? FileManager.default.temporaryDirectory
+                .appendingPathComponent("kilo-test-home-\(UUID().uuidString)").path
+            let implementation =
+                KiloProviderImplementation(environment: isolatedEnvironment) { [loader = self.loader] _ in
+                    try await loader.load()
+                }
             self.descriptor = try #require(implementation.settingsOrganizations(context: context))
         }
     }
