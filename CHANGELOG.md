@@ -5,14 +5,17 @@
 ### Added
 
 - Menu bar: show two providers in a stacked merged icon, using each provider's first layout line, with automatic or explicit row choices and consistent refreshes when either provider changes (#3628, #3596). Thanks @ysyyork!
+- Antigravity: estimate local history costs at public API prices, retain unknown and partial usage honestly, preserve complete history across partial refreshes, and keep routine local reads independent of pricing downloads (#3757). Thanks @Niclassslua!
 
 ### Fixed
 
+- CLI: show each host's source snapshot timestamp in SSH cost text reports, making stale remote totals visible without changing JSON output (#3765). Thanks @A-l-an!
 - Claude/Vertex costs: prevent crashes from oversized local history values, preserving valid token components and finite spend when an aggregate exceeds the cache's numeric range; preserve retained Codex history during the upgrade (#3793).
 - Linux quotas: show measured provider-specific windows, omit synthetic or unmeasured quota, and keep scoped identities private in IPC without colliding with notification state (#3785). Thanks @jsonMartin!
 - Claude/Vertex costs: isolate menu and Usage & Spend scan caches, avoiding repeated full rescans and preserving window-specific duplicate totals after upgrades (#3792, #3769). Thanks @postoso!
 - Linux installation: preserve managed configuration symlinks and UTF-8 glyphs across reinstalls, and recover dangling Omarchy adapter links (#3784). Thanks @jsonMartin!
 - Linux packaging: include executable contents when the selected binary is a symlink, keeping archives self-contained (#3784).
+- OpenCode Go: restore migrated Console quota windows and prepaid Zen balances, preserve independent legacy sessions, and keep missing reset times unknown instead of reporting expired credentials or immediate resets (#3796, fixes #3783). Thanks @kays0x and @NOIPJohnny!
 
 ### Improved
 
