@@ -20,6 +20,7 @@
 
 ### Improved
 
+- LiteLLM: run budget fetching through the bundled plugin while preserving private-network proxies, key-bound identities, team budgets, and spend-only accounts.
 - LLM Proxy: run quota fetching through the bundled plugin while preserving self-hosted origins, aggregate usage, and provider summaries.
 - Documentation: link every registered provider from the README and provider index, add ClinePass and OpenCode Go guides, and distinguish historical fork notes from current setup instructions.
 - Usage & Spend: group sources and models by provider, consolidate detail and daily/hourly chart selectors, and add a clear selected-day control while preserving incomplete-history warnings, local-history labels, calendar boundaries, privacy, and exports (#3353). Thanks @Yuxin-Qiao!

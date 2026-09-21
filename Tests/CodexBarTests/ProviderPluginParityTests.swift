@@ -16,6 +16,7 @@ struct ProviderPluginParityTests {
             (.deepgram, "DEEPGRAM_API_KEY"),
             (.poe, "POE_API_KEY"),
             (.llmproxy, "LLM_PROXY_API_KEY"),
+            (.litellm, "LITELLM_API_KEY"),
             (.sub2api, "SUB2API_API_KEY"),
             (.synthetic, "SYNTHETIC_API_KEY"),
             (.xai, "XAI_MANAGEMENT_API_KEY"),
@@ -28,6 +29,9 @@ struct ProviderPluginParityTests {
             }
             if provider == .llmproxy {
                 environment[LLMProxySettingsReader.baseURLEnvironmentKey] = "https://proxy.example.com"
+            }
+            if provider == .litellm {
+                environment[LiteLLMSettingsReader.baseURLEnvironmentKey] = "https://proxy.example.com"
             }
             if provider == .xai {
                 environment[XAISettingsReader.teamIDEnvironmentKey] = "team-1234"
@@ -43,7 +47,7 @@ struct ProviderPluginParityTests {
         }
     }
 
-    @Test(arguments: [UsageProvider.llmproxy])
+    @Test(arguments: [UsageProvider.llmproxy, .litellm])
     func `configured proxy origins reject invalid overrides before fetching`(provider: UsageProvider) async throws {
         let key = provider == .llmproxy ? "LLM_PROXY_API_KEY" : "LITELLM_API_KEY"
         let base = provider == .llmproxy ? "LLM_PROXY_BASE_URL" : "LITELLM_BASE_URL"
