@@ -24,24 +24,11 @@ public enum VeniceCookieImporter {
         browserDetection: BrowserDetection = BrowserDetection(),
         logger: ((String) -> Void)? = nil) throws -> [SessionInfo]
     {
-        var sessions: [SessionInfo] = []
-        let candidates = self.cookieImportOrder.cookieImportCandidates(using: browserDetection)
-        for browserSource in candidates {
-            do {
-                let perSource = try self.importSessions(from: browserSource, logger: logger)
-                sessions.append(contentsOf: perSource)
-            } catch {
-                BrowserCookieAccessGate.recordIfNeeded(error)
-                self.emit(
-                    "\(browserSource.displayName) cookie import failed: \(error.localizedDescription)",
-                    logger: logger)
-            }
-        }
-
-        guard !sessions.isEmpty else {
-            throw VeniceUsageError.missingCredentials
-        }
-        return sessions
+        try BrowserCookieImportSupport.collectSessions(
+            from: self.cookieImportOrder.cookieImportCandidates(using: browserDetection),
+            missingError: VeniceUsageError.missingCredentials,
+            logger: { self.emit($0, logger: logger) },
+            load: { try self.importSessions(from: $0, logger: logger) })
     }
 
     public static func importSessions(
