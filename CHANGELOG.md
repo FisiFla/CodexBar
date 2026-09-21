@@ -10,7 +10,7 @@
 
 ### Fixed
 
-- Provider plugins: keep multi-domain browser sessions isolated and evict only the rejected session without erasing newer cookies (#3422).
+- Provider plugins: keep multi-domain browser sessions isolated and evict only the rejected session without erasing newer cookies; expose cookie availability without reading credentials and block cookie resolution in API-only mode (#3422).
 
 - CLI: show each host's source snapshot timestamp in SSH cost text reports, making stale remote totals visible without changing JSON output (#3765). Thanks @A-l-an!
 - Claude/Vertex costs: prevent crashes from oversized local history values, preserving valid token components and finite spend when an aggregate exceeds the cache's numeric range; preserve retained Codex history during the upgrade (#3793).
