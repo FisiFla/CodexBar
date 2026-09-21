@@ -12,6 +12,7 @@
 - Linux quotas: show measured provider-specific windows, omit synthetic or unmeasured quota, and keep scoped identities private in IPC without colliding with notification state (#3785). Thanks @jsonMartin!
 - Claude/Vertex costs: isolate menu and Usage & Spend scan caches, avoiding repeated full rescans and preserving window-specific duplicate totals after upgrades (#3769). Thanks @postoso!
 - Linux installation: preserve managed configuration symlinks and UTF-8 glyphs across reinstalls, and recover dangling Omarchy adapter links (#3784). Thanks @jsonMartin!
+- Sharing: preserve complete providers' model breakdowns when another source in the same currency is unpriced or incomplete, and label omitted history as partial on cards and copied text (#3714, #3747). Thanks @Chipagosfinest!
 - Linux packaging: include executable contents when the selected binary is a symlink, keeping archives self-contained (#3784).
 
 ### Improved
