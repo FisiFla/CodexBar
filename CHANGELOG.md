@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- Muse Code: name Disable Keychain access when it blocks a Keychain-only login, and preserve plan and identity when an active subscription response omits quota windows (#3772). Thanks @oldcai!
 - Claude: bound the ambient refresh wait after claude-swap account activation, keeping switches serialized through adapter reconciliation without leaving account chips stuck (#3750, #3736). Thanks @keepitmello!
 - CLI: show each host's source snapshot timestamp in SSH cost text reports, making stale remote totals visible without changing JSON output (#3765). Thanks @A-l-an!
 - Claude/Vertex costs: prevent crashes from oversized local history values, preserving valid token components and finite spend when an aggregate exceeds the cache's numeric range; preserve retained Codex history during the upgrade (#3793).
