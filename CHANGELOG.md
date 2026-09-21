@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- Menu bar: assign stable item names before normal sizing and clear saved positions beyond the widest attached display on creation, including visibility recovery (#3355, #3201).
 - Grok: send a nonempty billing request while preserving legacy monthly usage and leaving unknown percentages unchanged (#3336). Thanks @CharlieLZ!
 - CLI: show each host's source snapshot timestamp in SSH cost text reports, making stale remote totals visible without changing JSON output (#3765). Thanks @A-l-an!
 - Packaging: derive app/widget Team IDs from the selected signing identity, reject ambiguous or mismatched identities, and honor the same identity during notarized packaging without weakening widget or signature checks; use Developer ID or ad-hoc signing for local builds (#3372). Thanks @krazybean!
