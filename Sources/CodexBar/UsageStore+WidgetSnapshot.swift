@@ -430,9 +430,6 @@ extension UsageStore {
         {
             return dyn
         }
-        if provider == .crof {
-            return CrofProviderDescriptor.primaryLabel(snapshot: snapshot)
-        }
         if provider == .alibabatokenplan,
            let dyn = AlibabaTokenPlanProviderDescriptor.primaryLabel(window: snapshot.primary)
         {
