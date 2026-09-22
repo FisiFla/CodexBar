@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Bifrost: preserve component rate-limit usage without duplicating the aggregate or showing unconfigured token/request windows (#3843).
 - Provider plugins: preserve unknown usage on named quota windows and numeric progress in detail rows.
 
 ## 0.64.1 — 2026-09-22
