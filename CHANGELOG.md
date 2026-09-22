@@ -11,6 +11,7 @@
 
 ### Fixed
 
+- Menu bar: keep layout palette token names readable by wrapping natural-width chips instead of truncating them into equal-width columns (#3782). Thanks @mattab178!
 - Browser sessions: discover Devin sessions in Brave, Edge, Arc, and other supported Chromium browsers, and keep Windsurf localStorage discovery aligned with the shared browser catalog (#3862).
 - Claude: preserve model-specific weekly quotas and account identity when CLI panels redraw with cursor jumps (#3822, fixes #3746). Thanks @fanwenlin!
 - Moonshot: use the bundled provider plugin on both engines while preserving regional API-key binding, USD/CNY balances, and deficit formatting (#3836).
