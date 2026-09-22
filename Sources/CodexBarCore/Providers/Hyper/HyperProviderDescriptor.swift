@@ -15,7 +15,9 @@ public enum HyperProviderDescriptor {
             requiresManualCookieSource: false,
             cookieName: nil),
         missingCredentialMessage: { _ in "Sign in to hyper.charm.land or configure a Charm Hyper API key." },
-        selectedAccountSourceModeResolver: { _, _, _ in .api })
+        selectedAccountSourceModeResolver: { base, account, _ in
+            base == .auto && account != nil ? .api : base
+        })
 
     public static func apiKey(environment: [String: String]) -> String? {
         SettingsValue.cleaned(environment[self.apiKeyEnvironmentKey])

@@ -18,7 +18,7 @@ or the session request cannot connect. Malformed successful responses fail visib
 
 Add an API key in the provider settings or set `HYPER_API_KEY` in the environment that launches CodexBar.
 Saved API keys and manual Cookie headers use the CodexBar config file. Multiple API-key token accounts
-are supported; selecting one uses API mode so an unrelated browser session cannot override that account.
+are supported; in Auto mode, selecting one uses API mode so an unrelated browser session cannot override that account.
 Cookies and bearer keys are sent separately, only to the declared `https://hyper.charm.land` origin.
 
 The CLI supports `codexbar usage --provider hyper --source api`. `--source web` requires a usable session
