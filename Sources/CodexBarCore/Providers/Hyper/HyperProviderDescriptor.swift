@@ -34,6 +34,7 @@ public enum HyperProviderDescriptor {
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .hyper,
+            menuBarMetrics: .automaticOnly,
             settingsSection: .init(HyperProviderSettingsKey.self, cookieSettings: CookieProviderSettings.self),
             credentials: self.credentials,
             metadata: ProviderMetadata(
