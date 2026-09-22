@@ -284,6 +284,19 @@ shared OAuth file can still be used as a fallback credential source.
   the family rule in JavaScript. See `docs/dashboard-api.md`.
 - CLI text and `cards` render quota-summary buckets once, using the same idle-family visibility rule. Missing or disabled quota stays unavailable, including in brief cards, while reset context remains visible. Raw JSON retains every bucket.
 
+## Quota observation history
+
+Pool balances without a recognized session/weekly quota summary retain separate, account-scoped Gemini and
+Claude/GPT observations. Each hour keeps the latest balance and its actual capture time, including replenishment
+without changed or available reset metadata. Unknown/omitted summary cadences use the same observation path.
+History adoption and persistence preserve these observations without inventing a duration or blank reset periods.
+Unavailable responses show the most recently captured history format; structured windows win timestamp ties.
+
+Structured session/weekly summaries keep their existing peak history and session-equivalent forecast behavior.
+When a response includes a usable known session or weekly summary cadence, the chart continues to use structured history.
+A pool reset timestamp alone does not establish a five-hour cycle: session pace forecasts require an explicit
+five-hour duration.
+
 ## Local token history
 
 Local history reads only the existing recognized roots: `~/.gemini/antigravity-cli/conversations/*.db`,

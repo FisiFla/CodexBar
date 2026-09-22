@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Antigravity: retain account-scoped quota observations without a reset duration, including replenishment within an hour, and avoid assuming a five-hour pace (#3619). Thanks @hhh2210!
 - Plugins: start HTTP attempt deadlines when transport tasks begin, preserving OpenRouter balance when optional key requests time out under scheduler load (#3836).
 - Menu bar: assign stable item names before normal sizing and clear saved positions beyond the widest attached display on creation, including visibility recovery (#3355, #3201).
 - Kimi: select China or International regions for usage, cookies, and dashboard links, while preventing unscoped CLI credentials from crossing hosts (#3752). Thanks @LPFchan!
