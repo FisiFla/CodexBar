@@ -2,6 +2,10 @@
 
 ## 0.64.2 — Unreleased
 
+### Fixed
+
+- Provider plugins: preserve unknown usage on named quota windows and numeric progress in detail rows.
+
 ## 0.64.1 — 2026-09-22
 
 ### Highlights
