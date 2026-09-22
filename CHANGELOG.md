@@ -2,6 +2,10 @@
 
 ## 0.64.2 — Unreleased
 
+### Added
+
+- Bifrost: track self-hosted gateway budgets, rate limits, and model spend using a virtual key and a bundled provider plugin (#3843). Thanks @diegocuehdz-lab49!
+
 ### Fixed
 
 - Provider plugins: preserve unknown usage on named quota windows and numeric progress in detail rows.
