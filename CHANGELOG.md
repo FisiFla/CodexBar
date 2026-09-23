@@ -4,6 +4,7 @@
 
 ### Added
 
+- Atlas Cloud and Vercel AI Gateway: show account/team USD balances through documented API-key endpoints, plus Vercel lifetime spend (#2714, #2975).
 - DevPass: track plan credits, premium weekly usage and resets, and API-key spending through the documented LLM Gateway API (#3433). Thanks @MichelKerkmeester!
 
 ### Fixed
