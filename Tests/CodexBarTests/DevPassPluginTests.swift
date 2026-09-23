@@ -117,14 +117,17 @@ struct DevPassPluginTests {
     {
         let payload = try JSONSerialization.data(withJSONObject: ["data": data.mapValues { $0 as Any? ?? NSNull() }])
         let runtime = try BundledPluginTestSupport.runtime(
-            "devpass", engine: engine,
+            "devpass",
+            engine: engine,
             transport: ProviderHTTPTransportHandler { request in
                 #expect(request.url?.absoluteString == "https://api.llmgateway.io/v1/key")
                 #expect(request.httpMethod == "GET")
                 #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-key")
                 #expect(request.timeoutInterval == 15)
                 let response = try #require(HTTPURLResponse(
-                    url: request.url!, statusCode: status, httpVersion: nil,
+                    url: request.url!,
+                    statusCode: status,
+                    httpVersion: nil,
                     headerFields: ["Content-Type": "application/json", "Retry-After": "0"]))
                 return (status == 200 ? body.map { Data($0.utf8) } ?? payload : Data("private-response".utf8), response)
             })

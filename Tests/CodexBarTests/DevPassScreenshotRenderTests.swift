@@ -31,7 +31,7 @@ final class DevPassScreenshotRenderTests: XCTestCase {
             showOptionalCreditsAndExtraUsage: true,
             hidePersonalInfo: true,
             usesLiveSubtitle: false,
-            now: Date(timeIntervalSince1970: 1_790_035_200)))
+            now: snapshot.updatedAt))
         let view = AnyView(UsageMenuCardView(model: model, width: 380)
             .environment(\.locale, Locale(identifier: "en_US_POSIX"))
             .environment(\.colorScheme, .light)
