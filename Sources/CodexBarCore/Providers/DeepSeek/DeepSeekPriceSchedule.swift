@@ -101,15 +101,37 @@ public struct DeepSeekPriceStatus: Sendable, Equatable {
 
 /// Schedule calculator for DeepSeek peak and off-peak pricing windows.
 ///
+/// Mirrors DeepSeek's published terms at `termsSourceURL` (the "Models & Pricing" page), last
+/// checked against them on `termsLastVerifiedOn`. The vendor states its windows in Beijing time,
+/// which is the fixed UTC+8 offset quoted below.
+///
 /// Schedule rules (fixed to UTC / Beijing time):
 /// - Peak hours apply Monday through Friday in two daily windows:
-///   - 01:00 to 04:00 UTC (3 hours)
-///   - 06:00 to 10:00 UTC (4 hours)
-/// - Off-peak applies all other times (50% off):
+///   - 01:00 to 04:00 UTC (3 hours) — 09:00 to 12:00 Beijing time
+///   - 06:00 to 10:00 UTC (4 hours) — 14:00 to 18:00 Beijing time
+/// - Off-peak applies all other times (off-peak rates are 50% of peak rates):
 ///   - Weekday intervals: 04:00–06:00 UTC (2h) and 10:00–01:00 UTC next day (15h).
 ///   - Weekends (Saturday and Sunday): Entire weekend is off-peak (from Friday 10:00 UTC
 ///     until Monday 01:00 UTC continuously).
+///
+/// Intentionally not modelled: DeepSeek also bills Chinese public holidays and adjusted make-up
+/// workdays at off-peak rates, and it assigns the tier from the moment its server *receives* a
+/// request rather than from a clock. Those gaps are surfaced to the user beside the clock, and
+/// this schedule is display-only — it never re-prices or rewrites reported spend, so it must not
+/// be used to compute a bill.
+///
+/// Maintenance contract: when DeepSeek changes these terms, update the windows in `transitions`,
+/// set `termsLastVerifiedOn` to the date of the check, and refresh the table in `docs/deepseek.md`;
+/// that document holds the full procedure. `DeepSeekPriceScheduleTests` fails until the code and
+/// the published terms line up again.
 public enum DeepSeekPriceSchedule {
+    /// Authoritative terms this schedule mirrors. Any window below that this page contradicts is a bug.
+    public static let termsSourceURL = "https://api-docs.deepseek.com/quick_start/pricing"
+
+    /// UTC date (`yyyy-MM-dd`) on which the mirrored windows were last checked against
+    /// `termsSourceURL`. Shown in the menu so users can judge how stale the schedule is.
+    public static let termsLastVerifiedOn = "2026-09-24"
+
     private static var utcCalendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.locale = Locale(identifier: "en_US_POSIX")

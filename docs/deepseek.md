@@ -93,11 +93,45 @@ DeepSeek Platform in Chrome. Authentication failures returned as top-level or ne
 - There is no session or weekly window — DeepSeek does not expose per-window quota via API.
 - Token-account selection injects the selected key into the fetch environment; otherwise CodexBar reads `DEEPSEEK_API_KEY` / `DEEPSEEK_KEY`.
 
+## Peak / off-peak price clock
+
+The menu card shows a countdown to the next pricing transition, the surrounding windows, and a
+24-hour timeline. It is **display-only**: it never re-prices usage, and reported spend always comes
+from DeepSeek's own cost reports.
+
+Mirrored terms (`https://api-docs.deepseek.com/quick_start/pricing`, "Models & Pricing"), stated by
+the vendor in Beijing time (UTC+8) and quoted here as UTC:
+
+| Tier | Days | Beijing time | UTC |
+|---|---|---|---|
+| Peak | Mon–Fri | 09:00–12:00 | 01:00–04:00 |
+| Off-peak | Mon–Fri | 12:00–14:00 | 04:00–06:00 |
+| Peak | Mon–Fri | 14:00–18:00 | 06:00–10:00 |
+| Off-peak | Mon–Fri | 18:00–09:00 | 10:00–01:00 next day |
+| Off-peak | Sat–Sun | all day | Fri 10:00 → Mon 01:00 continuously |
+
+Off-peak rates are 50% of peak rates. Not modelled: Chinese public holidays and adjusted make-up
+workdays (both bill at off-peak), and the vendor assigns the tier from the moment its server receives
+a request, which the docs do not define as start or completion time.
+
+Maintenance — DeepSeek has revised these terms repeatedly, so treat a stale schedule as a defect:
+
+1. Re-read the pricing page and compare it with the table above.
+2. Update the peak hours in `DeepSeekPriceSchedule.transitions` and bump
+   `DeepSeekPriceSchedule.termsLastVerifiedOn`.
+3. Refresh the table in this section.
+4. Run `swift test --filter DeepSeekPriceScheduleTests`; the Beijing-time test fails until the
+   windows match the published terms.
+
+The verification date is rendered next to the clock, so users can see when the mirrored terms were
+last checked, and hovering it names the source and the unmodelled holidays.
+
 ## Key files
 
 - `Sources/CodexBarCore/Providers/DeepSeek/DeepSeekProviderDescriptor.swift` (descriptor + fetch strategy)
 - `Sources/CodexBarCore/Providers/DeepSeek/DeepSeekUsageFetcher.swift` (HTTP client + JSON parser)
 - `Sources/CodexBarCore/Providers/DeepSeek/DeepSeekPlatformTokenImporter.swift` (Chrome Platform session import)
 - `Sources/CodexBarCore/Providers/DeepSeek/DeepSeekSettingsReader.swift` (env var resolution)
+- `Sources/CodexBarCore/Providers/DeepSeek/DeepSeekPriceSchedule.swift` (peak/off-peak windows and their source of truth)
 - `Sources/CodexBar/Providers/DeepSeek/DeepSeekProviderImplementation.swift` (provider activation and token-account visibility)
 - `Sources/CodexBarCore/TokenAccountSupportCatalog+Data.swift` (DeepSeek token-account injection)

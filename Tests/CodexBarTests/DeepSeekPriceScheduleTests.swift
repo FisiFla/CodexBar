@@ -110,6 +110,46 @@ struct DeepSeekPriceScheduleTests {
     }
 
     @Test
+    func `peak windows match the published Beijing-time hours`() throws {
+        // DeepSeek publishes peak hours as 09:00–12:00 and 14:00–18:00 Beijing time (UTC+8). Asserting
+        // against the vendor's own clock is what pins the mirrored constants to the published terms.
+        let beijing = try #require(TimeZone(identifier: "Asia/Shanghai"))
+        var beijingCalendar = Calendar(identifier: .gregorian)
+        beijingCalendar.locale = Locale(identifier: "en_US_POSIX")
+        beijingCalendar.timeZone = beijing
+
+        // Thursday Sep 24, 2026 09:00 Beijing == 01:00 UTC: first peak block opens.
+        let firstStart = Self.makeDate(day: 24, hour: 1)
+        #expect(DeepSeekPriceSchedule.isPeak(at: firstStart))
+        #expect(beijingCalendar.component(.hour, from: firstStart) == 9)
+        #expect(DeepSeekPriceSchedule.status(at: firstStart).currentWindow.end == Self.makeDate(day: 24, hour: 4))
+
+        // The lunch break between the blocks is off-peak.
+        let lunchBreak = Self.makeDate(day: 24, hour: 5)
+        #expect(beijingCalendar.component(.hour, from: lunchBreak) == 13)
+        #expect(!DeepSeekPriceSchedule.isPeak(at: lunchBreak))
+
+        // 14:00 Beijing == 06:00 UTC: second peak block opens, and closes at 18:00 Beijing == 10:00 UTC.
+        let secondStart = Self.makeDate(day: 24, hour: 6)
+        #expect(beijingCalendar.component(.hour, from: secondStart) == 14)
+        let secondStatus = DeepSeekPriceSchedule.status(at: secondStart)
+        #expect(secondStatus.isPeak)
+        #expect(secondStatus.currentWindow.end == Self.makeDate(day: 24, hour: 10))
+    }
+
+    @Test
+    func `schedule records the terms it mirrors`() {
+        // The maintenance contract in docs/deepseek.md depends on these staying machine-readable.
+        #expect(DeepSeekPriceSchedule.termsSourceURL.hasPrefix("https://"))
+        #expect(DeepSeekPriceSchedule.termsLastVerifiedOn.count == 10)
+        #expect(
+            Self.utcCalendar.date(from: DateComponents(
+                year: Int(DeepSeekPriceSchedule.termsLastVerifiedOn.prefix(4)),
+                month: Int(DeepSeekPriceSchedule.termsLastVerifiedOn.dropFirst(5).prefix(2)),
+                day: Int(DeepSeekPriceSchedule.termsLastVerifiedOn.suffix(2)))) != nil)
+    }
+
+    @Test
     func `day segments in local Vienna timezone match expected timeline slices`() throws {
         // Vienna is UTC+2 in September (CEST)
         let viennaTZ = try #require(TimeZone(identifier: "Europe/Vienna"))

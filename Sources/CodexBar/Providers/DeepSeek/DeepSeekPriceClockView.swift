@@ -52,6 +52,7 @@ public struct DeepSeekPriceClockView: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(accentColor)
                     .textCase(.uppercase)
+                    .help(Self.scheduleHelpText)
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -168,6 +169,18 @@ public struct DeepSeekPriceClockView: View {
                 .foregroundStyle(MenuHighlightStyle.secondary(self.isHighlighted))
                 .lineLimit(1)
         }
+    }
+
+    /// Names the source and the gaps the schedule does not model. Deliberately a hover hint rather
+    /// than a caption: the card's layout stays stable, so the committed menu screenshots stay
+    /// accurate. `docs/deepseek.md` carries the maintenance procedure.
+    private static var scheduleHelpText: String {
+        L(
+            "Peak and off-peak windows mirror DeepSeek's published pricing terms at %@, verified %@. "
+                + "Chinese public holidays and make-up workdays are not modelled, so treat this as an "
+                + "indicator rather than a bill.",
+            DeepSeekPriceSchedule.termsSourceURL,
+            DeepSeekPriceSchedule.termsLastVerifiedOn)
     }
 }
 
