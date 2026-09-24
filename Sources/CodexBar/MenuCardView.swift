@@ -260,7 +260,6 @@ struct UsageMenuCardView: View {
                     if let credits = liveModel.creditsText {
                         CreditsBarContent(
                             creditsText: credits,
-                            creditsRemaining: liveModel.creditsRemaining,
                             showsProgress: liveModel.creditsShowProgress,
                             progressPercent: liveModel.creditsProgressPercent,
                             scaleText: liveModel.creditsScaleText,
@@ -728,7 +727,6 @@ struct UsageMenuCardCreditsSectionView: View {
             VStack(alignment: .leading, spacing: 6) {
                 CreditsBarContent(
                     creditsText: credits,
-                    creditsRemaining: liveModel.creditsRemaining,
                     showsProgress: liveModel.creditsShowProgress,
                     progressPercent: liveModel.creditsProgressPercent,
                     scaleText: liveModel.creditsScaleText,
@@ -753,10 +751,7 @@ struct UsageMenuCardCreditsSectionView: View {
 }
 
 private struct CreditsBarContent: View {
-    private static let fullScaleTokens: Double = 1000
-
     let creditsText: String
-    let creditsRemaining: Double?
     let showsProgress: Bool
     var progressPercent: Double?, scaleText: String?
     let hintText: String?
@@ -764,32 +759,14 @@ private struct CreditsBarContent: View {
     let progressColor: Color
     @Environment(\.menuItemHighlighted) private var isHighlighted
 
-    private var percentLeft: Double? {
-        guard self.showsProgress else { return nil }
-        if let progressPercent {
-            return min(100, max(0, progressPercent))
-        }
-        guard let creditsRemaining else { return nil }
-        let percent = (creditsRemaining / Self.fullScaleTokens) * 100
-        return min(100, max(0, percent))
-    }
-
-    private var effectiveScaleText: String {
-        if let scaleText {
-            return scaleText
-        }
-        let scale = UsageFormatter.tokenCountString(Int(Self.fullScaleTokens))
-        return "\(scale) \(L("tokens"))"
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(L("Credits"))
                 .font(.body)
                 .fontWeight(.medium)
-            if let percentLeft {
+            if self.showsProgress, let progressPercent {
                 UsageProgressBar(
-                    percent: percentLeft,
+                    percent: min(100, max(0, progressPercent)),
                     tint: self.progressColor,
                     accessibilityLabel: L("Credits remaining"))
                 HStack(alignment: .firstTextBaseline) {
@@ -797,9 +774,11 @@ private struct CreditsBarContent: View {
                         .font(.caption)
                         .lineLimit(1)
                     Spacer()
-                    Text(self.effectiveScaleText)
-                        .font(.caption)
-                        .foregroundStyle(MenuHighlightStyle.secondary(self.isHighlighted))
+                    if let scaleText {
+                        Text(scaleText)
+                            .font(.caption)
+                            .foregroundStyle(MenuHighlightStyle.secondary(self.isHighlighted))
+                    }
                 }
             } else {
                 Text(self.creditsText)
