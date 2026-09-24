@@ -112,7 +112,9 @@ the vendor in Beijing time (UTC+8) and quoted here as UTC:
 
 Off-peak rates are 50% of peak rates. Not modelled: Chinese public holidays and adjusted make-up
 workdays (both bill at off-peak), and the vendor assigns the tier from the moment its server receives
-a request, which the docs do not define as start or completion time.
+a request, which the docs do not define as start or completion time. The card states **Excludes
+Chinese public holidays** directly under the tier — with the source and verification date on hover —
+so the computed tier is never presented as a bare billing fact.
 
 Maintenance — DeepSeek has revised these terms repeatedly, so treat a stale schedule as a defect:
 

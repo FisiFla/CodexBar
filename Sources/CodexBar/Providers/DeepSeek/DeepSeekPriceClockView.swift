@@ -67,6 +67,13 @@ public struct DeepSeekPriceClockView: View {
             Text(presentation.nextTransitionText)
                 .font(.caption)
                 .foregroundStyle(MenuHighlightStyle.secondary(self.isHighlighted))
+
+            // The vendor bills Chinese public holidays and make-up workdays at off-peak, and this
+            // schedule cannot see them, so the tier above is never presented as a bare billing fact.
+            Text(L("Excludes Chinese public holidays"))
+                .font(.system(size: 9))
+                .foregroundStyle(MenuHighlightStyle.secondary(self.isHighlighted))
+                .help(Self.scheduleHelpText)
         }
     }
 
