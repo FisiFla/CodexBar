@@ -306,6 +306,127 @@ final class SpendDashboardScreenshotRenderTests: XCTestCase {
         }
     }
 
+    func test_renderDeepSeekSpendDashboardProof() throws {
+        guard let dir = ProcessInfo.processInfo.environment["CODEXBAR_SPEND_PROOF_DIR"] else {
+            throw XCTSkip("Set CODEXBAR_SPEND_PROOF_DIR to render DeepSeek spend dashboard proof.")
+        }
+        let directory = URL(
+            fileURLWithPath: NSString(string: dir).expandingTildeInPath,
+            isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let calendar = Self.gmtCalendar
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 8, day: 24, hour: 12)))
+
+        let days = (0..<14).reversed().map { offset -> String in
+            let date = calendar.date(byAdding: .day, value: -offset, to: now)!
+            let formatter = DateFormatter()
+            formatter.calendar = calendar
+            formatter.timeZone = calendar.timeZone
+            formatter.dateFormat = "yyyy-MM-dd"
+            return formatter.string(from: date)
+        }
+
+        let dailyEntries = days.enumerated().map { index, day in
+            let chatCost = Double(index % 5 + 1) * 0.15
+            let reasonerCost = Double(index % 3 + 1) * 0.40
+            let chatTokens = (index % 5 + 1) * 25000
+            let reasonerTokens = (index % 3 + 1) * 15000
+            return CostUsageDailyReport.Entry(
+                date: day,
+                inputTokens: (chatTokens + reasonerTokens) / 2,
+                outputTokens: (chatTokens + reasonerTokens) / 4,
+                cacheReadTokens: (chatTokens + reasonerTokens) / 4,
+                totalTokens: chatTokens + reasonerTokens,
+                costUSD: chatCost + reasonerCost,
+                modelsUsed: ["deepseek-chat", "deepseek-reasoner"],
+                modelBreakdowns: [
+                    .init(
+                        modelName: "deepseek-chat",
+                        costUSD: chatCost,
+                        totalTokens: chatTokens,
+                        requestCount: 12,
+                        inputTokens: chatTokens / 2,
+                        outputTokens: chatTokens / 4,
+                        cacheReadTokens: chatTokens / 4),
+                    .init(
+                        modelName: "deepseek-reasoner",
+                        costUSD: reasonerCost,
+                        totalTokens: reasonerTokens,
+                        requestCount: 6,
+                        inputTokens: reasonerTokens / 2,
+                        outputTokens: reasonerTokens / 4,
+                        cacheReadTokens: reasonerTokens / 4),
+                ])
+        }
+
+        let preferredSnapshot = CostUsageTokenSnapshot(
+            sessionTokens: 40000,
+            sessionCostUSD: 0.55,
+            last30DaysTokens: dailyEntries.compactMap(\.totalTokens).reduce(0, +),
+            last30DaysCostUSD: dailyEntries.compactMap(\.costUSD).reduce(0, +),
+            currencyCode: "USD",
+            historyDays: 30,
+            historyCoverageIsEstablished: true,
+            costProvenance: .vendorMetered,
+            daily: dailyEntries,
+            updatedAt: now)
+
+        let preferredInput = SpendDashboardModel.ProviderInput(
+            provider: .deepseek,
+            displayName: "DeepSeek",
+            snapshot: preferredSnapshot)
+
+        let preferredModel = SpendDashboardModel.build(
+            inputs: [preferredInput],
+            requestedDays: 30,
+            now: now,
+            calendar: calendar)
+        let preferredGroup = try XCTUnwrap(preferredModel.groups.first)
+
+        let monthlyDaily = Array(dailyEntries.suffix(8))
+        let monthlySnapshot = CostUsageTokenSnapshot(
+            sessionTokens: 40000,
+            sessionCostUSD: 0.55,
+            last30DaysTokens: monthlyDaily.compactMap(\.totalTokens).reduce(0, +),
+            last30DaysCostUSD: monthlyDaily.compactMap(\.costUSD).reduce(0, +),
+            currencyCode: "CNY",
+            historyDays: 24,
+            historyCoverageIsEstablished: true,
+            historyLabel: "This month",
+            costProvenance: .vendorMetered,
+            daily: Array(monthlyDaily),
+            updatedAt: now)
+
+        let monthlyInput = SpendDashboardModel.ProviderInput(
+            provider: .deepseek,
+            displayName: "DeepSeek",
+            snapshot: monthlySnapshot)
+
+        let monthlyModel = SpendDashboardModel.build(
+            inputs: [monthlyInput],
+            requestedDays: 30,
+            now: now,
+            calendar: calendar)
+        let monthlyGroup: SpendDashboardModel.CurrencyGroup = try XCTUnwrap(monthlyModel.groups.first)
+
+        let renders: [(String, AnyView)] = [
+            (
+                "deepseek-spend-dashboard-30d-preferred",
+                AnyView(Self.chrome(selectedDays: 30, group: preferredGroup, detailSection: .providers))),
+            (
+                "deepseek-spend-dashboard-monthly-fallback",
+                AnyView(Self.chrome(selectedDays: 30, group: monthlyGroup, detailSection: .providers))),
+        ]
+
+        for (name, view) in renders {
+            let data = try XCTUnwrap(Self.pngData(for: view), "render failed for \(name)")
+            let url = directory.appendingPathComponent("\(name).png")
+            try data.write(to: url, options: .atomic)
+            print("Wrote \(url.path)")
+        }
+    }
+
     private static func proofRenders(
         thirty: SpendDashboardModel,
         thirtyGroup: SpendDashboardModel.CurrencyGroup,
