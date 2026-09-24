@@ -2491,8 +2491,8 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact shared construct dispatches a provider-owned capability at the generic integration boundary."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/SpendDashboardModel.swift",
-            line: 1355,
-            anchor: "guard provider == .mistral || provider == .openrouter || provider == .xai else { return displayCalendar }",
+            line: 1364,
+            anchor: "case .mistral, .openrouter, .xai:",
             expectedProviderIDs: ["mistral", "openrouter", "xai"],
             expectedReferenceCount: 3,
             expectedReferenceFingerprint: ["mistral@0", "openrouter@0", "xai@0"],
