@@ -1,0 +1,145 @@
+import CodexBarCore
+import Foundation
+import Testing
+
+struct DeepSeekPriceScheduleTests {
+    private static var utcCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        return calendar
+    }
+
+    private static func makeDate(
+        year: Int = 2026,
+        month: Int = 9,
+        day: Int,
+        hour: Int,
+        minute: Int = 0,
+        second: Int = 0) -> Date
+    {
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = hour
+        components.minute = minute
+        components.second = second
+        return Self.utcCalendar.date(from: components)!
+    }
+
+    @Test
+    func `reproduces screenshot Thursday morning peak window exactly`() {
+        // Screenshot was taken on Thursday, Sep 24, 2026 at 08:44:29 CEST (06:44:29 UTC)
+        let now = Self.makeDate(day: 24, hour: 6, minute: 44, second: 29)
+        let status = DeepSeekPriceSchedule.status(at: now)
+
+        #expect(status.isPeak)
+        #expect(status.currentTier == .peak)
+
+        // Peak window: 06:00 to 10:00 UTC (4 hours duration)
+        #expect(status.currentWindow.duration == 4 * 3600)
+        let expectedRemaining: TimeInterval = (3 * 3600) + (15 * 60) + 31
+        #expect(abs(status.timeRemainingInCurrentWindow - expectedRemaining) < 1)
+
+        // Next window is off-peak starting at 10:00 UTC (12:00 CEST)
+        #expect(status.nextWindow.tier == .offPeak)
+        #expect(status.nextWindow.start == Self.makeDate(day: 24, hour: 10))
+        // And runs until Friday 01:00 UTC (15 hours duration)
+        #expect(status.nextWindow.end == Self.makeDate(day: 25, hour: 1))
+        #expect(status.nextWindow.duration == 15 * 3600)
+    }
+
+    @Test
+    func `weekday off-peak between peak windows spans two hours`() {
+        // Thursday 05:15 UTC is between peak 1 (01:00-04:00) and peak 2 (06:00-10:00)
+        let now = Self.makeDate(day: 24, hour: 5, minute: 15)
+        let status = DeepSeekPriceSchedule.status(at: now)
+
+        #expect(!status.isPeak)
+        #expect(status.currentTier == .offPeak)
+        #expect(status.currentWindow.start == Self.makeDate(day: 24, hour: 4))
+        #expect(status.currentWindow.end == Self.makeDate(day: 24, hour: 6))
+        #expect(status.currentWindow.duration == 2 * 3600)
+        #expect(status.timeRemainingInCurrentWindow == 45 * 60)
+
+        // Next window is Peak 2
+        #expect(status.nextWindow.tier == .peak)
+        #expect(status.nextWindow.start == Self.makeDate(day: 24, hour: 6))
+        #expect(status.nextWindow.end == Self.makeDate(day: 24, hour: 10))
+    }
+
+    @Test
+    func `weekend is off-peak continuously from Friday 10:00 UTC to Monday 01:00 UTC`() {
+        // Friday Sep 25, 2026 at 18:00 UTC (after Friday peak hours)
+        let fridayNight = Self.makeDate(day: 25, hour: 18)
+        let fridayStatus = DeepSeekPriceSchedule.status(at: fridayNight)
+
+        #expect(!fridayStatus.isPeak)
+        #expect(fridayStatus.currentTier == .offPeak)
+        #expect(fridayStatus.currentWindow.start == Self.makeDate(day: 25, hour: 10))
+        #expect(fridayStatus.currentWindow.end == Self.makeDate(day: 28, hour: 1)) // Monday Sep 28, 01:00 UTC
+        #expect(fridayStatus.currentWindow.duration == 63 * 3600) // 14h Fri + 24h Sat + 24h Sun + 1h Mon = 63h
+
+        // Saturday Sep 26, 2026 at 14:00 UTC
+        let saturdayNoon = Self.makeDate(day: 26, hour: 14)
+        let saturdayStatus = DeepSeekPriceSchedule.status(at: saturdayNoon)
+        #expect(!saturdayStatus.isPeak)
+        #expect(saturdayStatus.currentWindow.end == Self.makeDate(day: 28, hour: 1))
+
+        // Sunday Sep 27, 2026 at 23:30 UTC
+        let sundayNight = Self.makeDate(day: 27, hour: 23, minute: 30)
+        let sundayStatus = DeepSeekPriceSchedule.status(at: sundayNight)
+        #expect(!sundayStatus.isPeak)
+        #expect(sundayStatus.timeRemainingInCurrentWindow == 90 * 60)
+        #expect(sundayStatus.nextWindow.tier == .peak)
+        #expect(sundayStatus.nextWindow.start == Self.makeDate(day: 28, hour: 1))
+    }
+
+    @Test
+    func `Monday peak window starts at 01:00 UTC`() {
+        // Monday Sep 28, 2026 at 02:00 UTC
+        let mondayMorning = Self.makeDate(day: 28, hour: 2)
+        let status = DeepSeekPriceSchedule.status(at: mondayMorning)
+
+        #expect(status.isPeak)
+        #expect(status.currentWindow.start == Self.makeDate(day: 28, hour: 1))
+        #expect(status.currentWindow.end == Self.makeDate(day: 28, hour: 4))
+        #expect(status.currentWindow.duration == 3 * 3600)
+    }
+
+    @Test
+    func `day segments in local Vienna timezone match expected timeline slices`() {
+        // Vienna is UTC+2 in September (CEST)
+        let viennaTZ = TimeZone(identifier: "Europe/Vienna")!
+        let date = Self.makeDate(day: 24, hour: 12) // Thursday
+        let segments = DeepSeekPriceSchedule.daySegments(for: date, timeZone: viennaTZ)
+
+        // In Vienna (UTC+2) on Thursday:
+        // 00:00 - 03:00 (Wed 22:00 - Thu 01:00 UTC): off-peak
+        // 03:00 - 06:00 (Thu 01:00 - 04:00 UTC): peak
+        // 06:00 - 08:00 (Thu 04:00 - 06:00 UTC): off-peak
+        // 08:00 - 12:00 (Thu 06:00 - 10:00 UTC): peak
+        // 12:00 - 24:00 (Thu 10:00 - 22:00 UTC): off-peak
+        #expect(segments.count == 5)
+        #expect(segments[0].tier == .offPeak)
+        #expect(abs(segments[0].startFraction - 0.0) < 0.001)
+        #expect(abs(segments[0].endFraction - (3.0 / 24.0)) < 0.001)
+
+        #expect(segments[1].tier == .peak)
+        #expect(abs(segments[1].startFraction - (3.0 / 24.0)) < 0.001)
+        #expect(abs(segments[1].endFraction - (6.0 / 24.0)) < 0.001)
+
+        #expect(segments[2].tier == .offPeak)
+        #expect(abs(segments[2].startFraction - (6.0 / 24.0)) < 0.001)
+        #expect(abs(segments[2].endFraction - (8.0 / 24.0)) < 0.001)
+
+        #expect(segments[3].tier == .peak)
+        #expect(abs(segments[3].startFraction - (8.0 / 24.0)) < 0.001)
+        #expect(abs(segments[3].endFraction - (12.0 / 24.0)) < 0.001)
+
+        #expect(segments[4].tier == .offPeak)
+        #expect(abs(segments[4].startFraction - (12.0 / 24.0)) < 0.001)
+        #expect(abs(segments[4].endFraction - 1.0) < 0.001)
+    }
+}

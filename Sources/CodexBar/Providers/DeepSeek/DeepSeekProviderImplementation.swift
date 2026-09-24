@@ -60,4 +60,26 @@ struct DeepSeekProviderImplementation: ProviderImplementation {
                 }),
         ]
     }
+
+    @MainActor
+    func settingsToggles(context: ProviderSettingsContext) -> [ProviderSettingsToggleDescriptor] {
+        [
+            ProviderSettingsToggleDescriptor(
+                id: "deepseek-price-clock",
+                title: "Peak price clock",
+                subtitle: "Show peak and off-peak hours countdown and schedule in menu.",
+                binding: Binding(
+                    get: { !context.settings.hiddenUsageItemIDs(for: .deepseek).contains(.deepSeekPriceClock) },
+                    set: { isVisible in
+                        context.settings.setUsageItemVisible(isVisible, itemID: .deepSeekPriceClock, for: .deepseek)
+                    }),
+                statusText: nil,
+                actions: [],
+                isVisible: nil,
+                isEnabled: nil,
+                onChange: nil,
+                onAppDidBecomeActive: nil,
+                onAppearWhenEnabled: nil),
+        ]
+    }
 }
