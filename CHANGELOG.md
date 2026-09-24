@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- Claude: document browser-session recovery and the explicit cookie-import retry when Claude works in Chrome but CodexBar cannot read the session (#3919). Thanks @PakAbhishek!
 - Menu bar: resolve provider balances in stored layouts and show Doubao Agent Plan icon usage when Coding Plan lanes are absent (#3904, #3897, #3901, #3907, #3898, #3911). Thanks @vincent-peng, @mousebomb, and @harjothkhara!
 - Claude costs: skip identical cache and report-memo writes after rescans, reducing local history disk writes (#3882).
 - Codex costs: avoid rewriting unchanged retained file state when another session or scan metadata changes, reducing local history disk writes (#3882).
