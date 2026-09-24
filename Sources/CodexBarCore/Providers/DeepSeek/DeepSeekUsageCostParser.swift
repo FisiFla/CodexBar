@@ -704,36 +704,6 @@ enum DeepSeekUsageCostParser {
         return (topModel, breakdown, modelCosts.values)
     }
 
-    private struct ModelCostTotals {
-        private var totals: [String: Double] = [:]
-        private var unavailable: Set<String> = []
-
-        mutating func add(_ amount: Double?, model rawModel: String?) {
-            guard let model = rawModel?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !model.isEmpty, !self.unavailable.contains(model)
-            else { return }
-            if let amount, amount.isFinite, amount.sign != .minus {
-                let total = (self.totals[model] ?? 0) + amount
-                if total.isFinite {
-                    self.totals[model] = total
-                    return
-                }
-            }
-            // A malformed component must not leave a plausible but incomplete model total.
-            self.unavailable.insert(model)
-            self.totals.removeValue(forKey: model)
-        }
-
-        var values: [DeepSeekModelCost] {
-            self.totals.map { DeepSeekModelCost(model: $0.key, cost: $0.value) }.sorted {
-                $0.cost == $1.cost ? $0.model < $1.model : $0.cost > $1.cost
-            }
-        }
-
-        var totalsDictionary: [String: Double] {
-            self.totals
-        }
-    }
 
     private static func buildDailyUsages(ctx: DailyAggregationContext) -> [DeepSeekDailyUsage] {
         var result: [DeepSeekDailyUsage] = []
@@ -1012,6 +982,8 @@ enum DeepSeekUsageCostParser {
         result.currency = selectedBlock?.currency?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "CNY"
         var modelCostTotals = ModelCostTotals()
         var dayModelCostTotals: [String: ModelCostTotals] = [:]
+        var dayCostTotals: [String: Double] = [:]
+        var dayCostUnavailable: Set<String> = []
 
         for series in selectedBlock?.series ?? [] {
             if let id = series.apiKey?.id {
@@ -1026,8 +998,19 @@ enum DeepSeekUsageCostParser {
                 let date = self.dayString(fromUnix: bucket.time, calendar: calendar)
                 result.dayCostReported.insert(date)
                 let amount = bucket.cost.flatMap { Self.parseValidCostAmount($0.value) }
-                if let amount {
-                    result.dayCosts[date, default: 0] += amount
+                if !dayCostUnavailable.contains(date) {
+                    if let amount {
+                        let total = (dayCostTotals[date] ?? 0) + amount
+                        if total.isFinite {
+                            dayCostTotals[date] = total
+                        } else {
+                            dayCostUnavailable.insert(date)
+                            dayCostTotals.removeValue(forKey: date)
+                        }
+                    } else {
+                        dayCostUnavailable.insert(date)
+                        dayCostTotals.removeValue(forKey: date)
+                    }
                 }
                 if let rawModel, !rawModel.isEmpty {
                     dayModelCostTotals[date, default: ModelCostTotals()].add(amount, model: rawModel)
@@ -1035,6 +1018,7 @@ enum DeepSeekUsageCostParser {
                 modelCostTotals.add(amount, model: series.model)
             }
         }
+        result.dayCosts = dayCostTotals
         result.dayModelCosts = dayModelCostTotals.mapValues(\.totalsDictionary)
         result.modelCosts = modelCostTotals.values
         return result
@@ -1198,6 +1182,37 @@ enum DeepSeekUsageCostParser {
 
     private static func dayString(fromUnix time: Int, calendar: Calendar) -> String {
         self.AggregationContext.dayString(Date(timeIntervalSince1970: TimeInterval(time)), calendar: calendar)
+    }
+}
+
+private struct ModelCostTotals {
+    private var totals: [String: Double] = [:]
+    private var unavailable: Set<String> = []
+
+    mutating func add(_ amount: Double?, model rawModel: String?) {
+        guard let model = rawModel?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !model.isEmpty, !self.unavailable.contains(model)
+        else { return }
+        if let amount, amount.isFinite, amount.sign != .minus {
+            let total = (self.totals[model] ?? 0) + amount
+            if total.isFinite {
+                self.totals[model] = total
+                return
+            }
+        }
+        // A malformed component must not leave a plausible but incomplete model total.
+        self.unavailable.insert(model)
+        self.totals.removeValue(forKey: model)
+    }
+
+    var values: [DeepSeekModelCost] {
+        self.totals.map { DeepSeekModelCost(model: $0.key, cost: $0.value) }.sorted {
+            $0.cost == $1.cost ? $0.model < $1.model : $0.cost > $1.cost
+        }
+    }
+
+    var totalsDictionary: [String: Double] {
+        self.totals
     }
 }
 

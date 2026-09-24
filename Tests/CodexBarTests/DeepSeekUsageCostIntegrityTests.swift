@@ -173,5 +173,6 @@ struct DeepSeekUsageCostIntegrityTests {
 
         let coder = breakdowns.first { $0.modelName == "deepseek-coder" }
         #expect(coder?.costUSD == 0.20)
+        #expect(dayUsage?.cost == nil)
     }
 }
