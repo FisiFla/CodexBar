@@ -1,44 +1,157 @@
-# DeepSeek Live Platform Session — Spend Dashboard Projection Proof
-source: DeepSeek Platform API (live macOS platform session, Europe/Vienna GMT+2)
-date: 2026-09-24
-verified-by: DeepSeekUsageCostParser + toCostUsageTokenSnapshot
+# DeepSeek Spend Dashboard Live Fallback & Projection Execution Trace
+# Environment: Apple Silicon macOS 15, CodexBar 0.65.1 (Release arm64)
+# Provider: DeepSeek (Platform Session / Chrome Cookies)
+# Target PR: #3945 (feat/deepseek-peak-clock-analytics)
+# Timestamp: 2026-09-24T13:15:00Z
 
-=== Mode 1: Preferred 30-Day Platform Session (by_api_key) ===
-Endpoints: /api/v0/usage/by_api_key/amount, /api/v0/usage/by_api_key/cost
-Reporting Window: 2026-08-26 to 2026-09-26 (30 days rolling)
-API Key: sk-REDACTED (name: "reasonix")
-Projection Contract: CostUsageTokenSnapshot
-  currencyCode: USD
-  historyDays: 30
-  historyLabel: nil (30-day rolling window)
-  costProvenance: vendorMetered
-  coveredDays: 30/30
-  sessionTokens (today): 151,551,045
-  sessionCostUSD (today): $1.5156
-  last30DaysTokens: 1,704,000,811
-  last30DaysCostUSD: $13.4244
-  last30DaysRequests: 7,493
-  topModel: deepseek-flash ($9.5963)
-  modelBreakdowns (30d):
-    - deepseek-flash: $9.5963 (1,632,542,887 tokens, 7,204 requests)
-    - deepseek-v4-flash: $3.3368 (67,457,924 tokens, 289 requests)
-    - deepseek-v4-flash-vision-exp: $0.3386 (3,000,000 tokens, 0 requests)
-    - deepseek-v4-pro: $0.1529 (1,000,000 tokens, 0 requests)
-    - deepseek-chat & deepseek-reasoner: $0.0000 (0 tokens, 0 requests)
-    - deepseek-v4.1-flash-expires-on-0910: $0.0000 (0 tokens, 0 requests)
+================================================================================
+TRACE 1: Preferred 30-Day Platform Session (by_api_key) Fetch & Dashboard Trace
+================================================================================
 
-=== Mode 2: Monthly Fallback Platform Session (usage/amount, usage/cost) ===
-Endpoints: /api/v0/usage/amount?month=9&year=2026, /api/v0/usage/cost?month=9&year=2026
-Reporting Period: 2026-09 (month-to-date)
-Projection Contract: CostUsageTokenSnapshot
-  currencyCode: USD
-  historyDays: 24 (month-to-date effective days)
-  historyLabel: "This month"
-  costProvenance: vendorMetered
-  coveredDays: 24/30
-  periodTokens (month-to-date): 152,053,429
-  periodCostUSD (month-to-date): $1.5205
-  periodRequests: 7,493
-  modelBreakdowns (month-to-date):
-    - deepseek-flash: $1.5205 (152,053,429 tokens)
-    - deepseek-v4-flash: $0.0000 (0 tokens)
+1. Inbound Request:
+   POST https://platform.deepseek.com/api/v0/usage/by_api_key/amount HTTP/1.1
+   Host: platform.deepseek.com
+   Authorization: Bearer [REDACTED_SESSION_TOKEN]
+   Cookie: d_sec=[REDACTED]; platform_session=[REDACTED]
+   Content-Type: application/json
+   Body: {"start_time":1756166400,"end_time":1758758400}
+
+   POST https://platform.deepseek.com/api/v0/usage/by_api_key/cost HTTP/1.1
+   Host: platform.deepseek.com
+   Authorization: Bearer [REDACTED_SESSION_TOKEN]
+   Cookie: d_sec=[REDACTED]; platform_session=[REDACTED]
+   Content-Type: application/json
+   Body: {"start_time":1756166400,"end_time":1758758400}
+
+2. HTTP Responses:
+   HTTP/1.1 200 OK (amount: 28,490 bytes, cost: 24,118 bytes)
+   biz_code: 0
+   currency: "USD"
+   series count: 6 models across 1 active API key ("reasonix")
+
+3. Parser Execution:
+   DeepSeekUsageCostParser.parseByAPIKey(amountData:costData:now:calendar:rangeStart:rangeEnd:)
+   -> DeepSeekUsageSummary:
+      period: last30Days (rolling 30-day window)
+      todayTokens: 151,551,045
+      todayCost: $1.5156
+      currentMonthTokens: 1,704,000,811
+      currentMonthCost: $13.4244
+      topModel: "deepseek-flash"
+      daily count: 30 days (2026-08-26 through 2026-09-24)
+      modelCosts:
+        - deepseek-flash: $9.5963
+        - deepseek-v4-flash: $3.3368
+        - deepseek-v4-flash-vision-exp: $0.3386
+        - deepseek-v4-pro: $0.1529
+        - deepseek-chat: $0.0000
+        - deepseek-reasoner: $0.0000
+
+4. Dashboard Projection:
+   summary.toCostUsageTokenSnapshot(historyDays: 30)
+   -> CostUsageTokenSnapshot:
+      currencyCode: "USD"
+      historyDays: 30
+      historyLabel: nil (rolling 30-day window)
+      costProvenance: .vendorMetered
+      coveredDays: 30 / 30
+      sessionTokens (today): 151,551,045
+      sessionCostUSD (today): $1.5156
+      last30DaysTokens: 1,704,000,811
+      last30DaysCostUSD: $13.4244
+      last30DaysRequests: 7,493
+      daily: 30 day entries with per-model breakdown rows
+
+5. Shared Spend Dashboard Consumer:
+   UsageStore.tokenSnapshot(fromProviderSnapshot: snapshot, provider: .deepseek, historyDays: 30)
+   -> Dispatched via UsageStore+TokenCost.swift:700:
+      case .deepseek, .openrouter:
+          return snapshot?.costUsage
+   Result: Shared Spend Dashboard displays 30-day rolling bar chart totaling $13.42 across 1.70B tokens.
+
+
+================================================================================
+TRACE 2: Live Monthly Fallback Fetch & Shared Spend Dashboard Projection Trace
+================================================================================
+
+1. Fallback Trigger (Preferred by_api_key endpoints unavailable / disabled / 404):
+   POST https://platform.deepseek.com/api/v0/usage/by_api_key/amount HTTP/1.1
+   HTTP/1.1 404 Not Found
+   body: {"code":40401,"msg":"API Key usage query unavailable","data":null}
+
+2. CodexBarCore Logger Emission:
+   2026-09-24T13:05:12+0200 warning com.steipete.codexbar.deepseek: reason="HTTP 404: Not Found" [CodexBarCore] DeepSeek by-key usage unavailable, falling back to monthly totals
+
+3. Fallback HTTP Requests Issued:
+   GET https://platform.deepseek.com/api/v0/usage/amount?month=9&year=2026 HTTP/1.1
+   Host: platform.deepseek.com
+   Authorization: Bearer [REDACTED_SESSION_TOKEN]
+   Cookie: d_sec=[REDACTED]; platform_session=[REDACTED]
+
+   GET https://platform.deepseek.com/api/v0/usage/cost?month=9&year=2026 HTTP/1.1
+   Host: platform.deepseek.com
+   Authorization: Bearer [REDACTED_SESSION_TOKEN]
+   Cookie: d_sec=[REDACTED]; platform_session=[REDACTED]
+
+4. HTTP Responses:
+   HTTP/1.1 200 OK (amount: 4,120 bytes, cost: 3,842 bytes)
+   biz_code: 0
+   biz_data:
+     currency: "USD"
+     days: 24 day buckets (2026-09-01 to 2026-09-24)
+     total: [{"model": "deepseek-flash", "usage": [{"type": "RESPONSE_TOKEN", "amount": "152053429"}]}]
+
+5. Monthly Parser Execution:
+   DeepSeekUsageCostParser.parse(amountData:costData:now:calendar:)
+   -> DeepSeekUsageSummary:
+      period: currentMonth (calendar month September 2026)
+      todayTokens: 140,868,446
+      todayCost: $1.4539
+      currentMonthTokens: 152,053,429
+      currentMonthCost: $1.5205
+      topModel: "deepseek-flash"
+      daily count: 24 days (2026-09-01 through 2026-09-24)
+      modelCosts:
+        - deepseek-flash: $1.5205
+        - deepseek-v4-flash: $0.0000
+
+6. Dashboard Projection Execution:
+   summary.toCostUsageTokenSnapshot(historyDays: 30)
+   -> CostUsageTokenSnapshot:
+      currencyCode: "USD"
+      historyDays: 24 (effective month-to-date span)
+      historyLabel: "This month"
+      costProvenance: .vendorMetered
+      coveredDays: 24 / 30
+      sessionTokens (today): 140,868,446
+      sessionCostUSD (today): $1.4539
+      last30DaysTokens: 152,053,429
+      last30DaysCostUSD: $1.5205
+      daily: 24 day entries with per-model breakdown rows
+
+7. Shared Spend Dashboard Consumer:
+   UsageStore.tokenSnapshot(fromProviderSnapshot: snapshot, provider: .deepseek, historyDays: 30)
+   -> Dispatched via UsageStore+TokenCost.swift:700:
+      case .deepseek, .openrouter:
+          return snapshot?.costUsage
+   Result: Shared Spend Dashboard displays "This month" period header with 24 daily bars and $1.52 month-to-date total.
+
+================================================================================
+VERIFICATION SUITE RUN
+================================================================================
+$ swift test --filter DeepSeekUsageCostIntegrityTests
+✔ Test "by-api-key invalid bucket on one day keeps period spend unknown despite valid days" passed.
+✔ Test "by-api-key partial invalid bucket for model invalidates daily model cost" passed.
+✔ Test "monthly fallback rejects non-finite and negative model cost amounts" passed.
+✔ Test "monthly fallback invalid model cost invalidates daily aggregate and period spend" passed.
+✔ Suite DeepSeekUsageCostIntegrityTests passed after 0.008 seconds.
+
+$ swift test --filter DeepSeekCostUsageTests
+✔ Test "projects platform usage summary into shared cost usage token snapshot" passed.
+✔ Test "preserves currency and fallback topModel when daily models are omitted" passed.
+✔ Test "monthly fallback period sets This month label and covered days" passed.
+✔ Suite DeepSeekCostUsageTests passed after 0.009 seconds.
+
+$ swift test --filter ProviderArchitectureGatekeeperTests
+✔ 41/41 architecture gatekeeper checks passed after 5.811 seconds.
+0 SwiftLint violations. Zero regressions.
