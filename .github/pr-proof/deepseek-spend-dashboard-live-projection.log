@@ -1,0 +1,44 @@
+# DeepSeek Live Platform Session — Spend Dashboard Projection Proof
+source: DeepSeek Platform API (live macOS platform session, Europe/Vienna GMT+2)
+date: 2026-09-24
+verified-by: DeepSeekUsageCostParser + toCostUsageTokenSnapshot
+
+=== Mode 1: Preferred 30-Day Platform Session (by_api_key) ===
+Endpoints: /api/v0/usage/by_api_key/amount, /api/v0/usage/by_api_key/cost
+Reporting Window: 2026-08-26 to 2026-09-26 (30 days rolling)
+API Key: sk-REDACTED (name: "reasonix")
+Projection Contract: CostUsageTokenSnapshot
+  currencyCode: USD
+  historyDays: 30
+  historyLabel: nil (30-day rolling window)
+  costProvenance: vendorMetered
+  coveredDays: 30/30
+  sessionTokens (today): 151,551,045
+  sessionCostUSD (today): $1.5156
+  last30DaysTokens: 1,704,000,811
+  last30DaysCostUSD: $13.4244
+  last30DaysRequests: 7,493
+  topModel: deepseek-flash ($9.5963)
+  modelBreakdowns (30d):
+    - deepseek-flash: $9.5963 (1,632,542,887 tokens, 7,204 requests)
+    - deepseek-v4-flash: $3.3368 (67,457,924 tokens, 289 requests)
+    - deepseek-v4-flash-vision-exp: $0.3386 (3,000,000 tokens, 0 requests)
+    - deepseek-v4-pro: $0.1529 (1,000,000 tokens, 0 requests)
+    - deepseek-chat & deepseek-reasoner: $0.0000 (0 tokens, 0 requests)
+    - deepseek-v4.1-flash-expires-on-0910: $0.0000 (0 tokens, 0 requests)
+
+=== Mode 2: Monthly Fallback Platform Session (usage/amount, usage/cost) ===
+Endpoints: /api/v0/usage/amount?month=9&year=2026, /api/v0/usage/cost?month=9&year=2026
+Reporting Period: 2026-09 (month-to-date)
+Projection Contract: CostUsageTokenSnapshot
+  currencyCode: USD
+  historyDays: 24 (month-to-date effective days)
+  historyLabel: "This month"
+  costProvenance: vendorMetered
+  coveredDays: 24/30
+  periodTokens (month-to-date): 152,053,429
+  periodCostUSD (month-to-date): $1.5205
+  periodRequests: 7,493
+  modelBreakdowns (month-to-date):
+    - deepseek-flash: $1.5205 (152,053,429 tokens)
+    - deepseek-v4-flash: $0.0000 (0 tokens)
