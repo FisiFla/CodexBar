@@ -237,15 +237,18 @@ struct DeepSeekUsageCostIntegrityTests {
         }
         """
 
+        let rangeStart = try #require(calendar.date(byAdding: .day, value: -2, to: today))
+        let rangeEnd = try #require(calendar.date(byAdding: .day, value: 1, to: today))
+
         let summary = try DeepSeekUsageCostParser.parseByAPIKey(
             amountData: Data(amountJSON.utf8),
             costData: Data(costJSON.utf8),
             now: self.fixtureNow,
             calendar: calendar,
-            rangeStart: calendar.date(byAdding: .day, value: -2, to: today)!,
-            rangeEnd: calendar.date(byAdding: .day, value: 1, to: today)!)
+            rangeStart: rangeStart,
+            rangeEnd: rangeEnd)
 
-        let targetDate = calendar.date(byAdding: .day, value: -1, to: today)!
+        let targetDate = try #require(calendar.date(byAdding: .day, value: -1, to: today))
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = calendar
@@ -316,13 +319,16 @@ struct DeepSeekUsageCostIntegrityTests {
         }
         """
 
+        let rangeStart = try #require(calendar.date(byAdding: .day, value: -3, to: today))
+        let rangeEnd = try #require(calendar.date(byAdding: .day, value: 1, to: today))
+
         let summary = try DeepSeekUsageCostParser.parseByAPIKey(
             amountData: Data(amountJSON.utf8),
             costData: Data(costJSON.utf8),
             now: self.fixtureNow,
             calendar: calendar,
-            rangeStart: calendar.date(byAdding: .day, value: -3, to: today)!,
-            rangeEnd: calendar.date(byAdding: .day, value: 1, to: today)!)
+            rangeStart: rangeStart,
+            rangeEnd: rangeEnd)
 
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -330,8 +336,10 @@ struct DeepSeekUsageCostIntegrityTests {
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyy-MM-dd"
 
-        let targetDate1String = formatter.string(from: calendar.date(byAdding: .day, value: -2, to: today)!)
-        let targetDate2String = formatter.string(from: calendar.date(byAdding: .day, value: -1, to: today)!)
+        let targetDate1 = try #require(calendar.date(byAdding: .day, value: -2, to: today))
+        let targetDate2 = try #require(calendar.date(byAdding: .day, value: -1, to: today))
+        let targetDate1String = formatter.string(from: targetDate1)
+        let targetDate2String = formatter.string(from: targetDate2)
 
         let day1Usage = summary.daily.first { $0.date == targetDate1String }
         let day2Usage = summary.daily.first { $0.date == targetDate2String }

@@ -8,20 +8,20 @@
 TRACE 1: Preferred 30-Day Platform Session (by_api_key) Fetch & Dashboard Trace
 ================================================================================
 
-1. Inbound Request:
-   POST https://platform.deepseek.com/api/v0/usage/by_api_key/amount HTTP/1.1
+1. Inbound Requests:
+   GET https://platform.deepseek.com/api/v0/usage/by_api_key/amount?start=1787702400&end=1790294400&tz=7200 HTTP/1.1
    Host: platform.deepseek.com
    Authorization: Bearer [REDACTED_SESSION_TOKEN]
+   Accept: application/json
+   x-client-platform: web
    Cookie: d_sec=[REDACTED]; platform_session=[REDACTED]
-   Content-Type: application/json
-   Body: {"start_time":1756166400,"end_time":1758758400}
 
-   POST https://platform.deepseek.com/api/v0/usage/by_api_key/cost HTTP/1.1
+   GET https://platform.deepseek.com/api/v0/usage/by_api_key/cost?start=1787702400&end=1790294400&tz=7200 HTTP/1.1
    Host: platform.deepseek.com
    Authorization: Bearer [REDACTED_SESSION_TOKEN]
+   Accept: application/json
+   x-client-platform: web
    Cookie: d_sec=[REDACTED]; platform_session=[REDACTED]
-   Content-Type: application/json
-   Body: {"start_time":1756166400,"end_time":1758758400}
 
 2. HTTP Responses:
    HTTP/1.1 200 OK (amount: 28,490 bytes, cost: 24,118 bytes)
@@ -75,7 +75,12 @@ TRACE 2: Live Monthly Fallback Fetch & Shared Spend Dashboard Projection Trace
 ================================================================================
 
 1. Fallback Trigger (Preferred by_api_key endpoints unavailable / disabled / 404):
-   POST https://platform.deepseek.com/api/v0/usage/by_api_key/amount HTTP/1.1
+   GET https://platform.deepseek.com/api/v0/usage/by_api_key/amount?start=1787702400&end=1790294400&tz=7200 HTTP/1.1
+   Host: platform.deepseek.com
+   Authorization: Bearer [REDACTED_SESSION_TOKEN]
+   Accept: application/json
+   x-client-platform: web
+   Cookie: d_sec=[REDACTED]; platform_session=[REDACTED]
    HTTP/1.1 404 Not Found
    body: {"code":40401,"msg":"API Key usage query unavailable","data":null}
 
@@ -86,11 +91,15 @@ TRACE 2: Live Monthly Fallback Fetch & Shared Spend Dashboard Projection Trace
    GET https://platform.deepseek.com/api/v0/usage/amount?month=9&year=2026 HTTP/1.1
    Host: platform.deepseek.com
    Authorization: Bearer [REDACTED_SESSION_TOKEN]
+   Accept: application/json
+   x-client-platform: web
    Cookie: d_sec=[REDACTED]; platform_session=[REDACTED]
 
    GET https://platform.deepseek.com/api/v0/usage/cost?month=9&year=2026 HTTP/1.1
    Host: platform.deepseek.com
    Authorization: Bearer [REDACTED_SESSION_TOKEN]
+   Accept: application/json
+   x-client-platform: web
    Cookie: d_sec=[REDACTED]; platform_session=[REDACTED]
 
 4. HTTP Responses:
