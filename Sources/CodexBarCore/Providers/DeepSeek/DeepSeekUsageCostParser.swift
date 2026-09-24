@@ -742,7 +742,6 @@ enum DeepSeekUsageCostParser {
 
             let amounts = ctx.amountMap[date] ?? [:]
             let costs = ctx.costMap[date] ?? [:]
-            let hasCostData = ctx.costMap[date] != nil
 
             var dayTokens = 0
             var dayCost: Double?
@@ -782,17 +781,15 @@ enum DeepSeekUsageCostParser {
                 }
 
                 let mCost: Double? = {
-                    if let costItems = costs[model] {
-                        var sum: Double = 0
-                        for item in costItems {
-                            guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else { continue }
-                            if category != .request {
-                                sum += Self.parseCostAmount(item.amount)
-                            }
+                    guard let costItems = costs[model] else { return nil }
+                    var sum: Double = 0
+                    for item in costItems {
+                        guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else { continue }
+                        if category != .request {
+                            sum += Self.parseCostAmount(item.amount)
                         }
-                        return sum
                     }
-                    return hasCostData ? 0.0 : nil
+                    return sum
                 }()
 
                 dayTokens += mTokens
@@ -1047,7 +1044,6 @@ enum DeepSeekUsageCostParser {
 
             let modelAmounts = dayAmounts[date] ?? [:]
             let modelCostsOnDate = dayModelCosts[date] ?? [:]
-            let hasCostData = dayCostReported.contains(date)
             let allModels = Set(modelAmounts.keys).union(modelCostsOnDate.keys).sorted()
 
             for model in allModels {
@@ -1077,13 +1073,7 @@ enum DeepSeekUsageCostParser {
                     }
                 }
 
-                let mCost: Double? = if let costVal = modelCostsOnDate[model] {
-                    costVal
-                } else if hasCostData {
-                    0.0
-                } else {
-                    nil
-                }
+                let mCost: Double? = modelCostsOnDate[model]
 
                 requests += mRequests
                 tokens += mTokens
