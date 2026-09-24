@@ -159,6 +159,45 @@ extension SpendDashboardModel {
         }
     }
 
+    /// Provider-specific by design: only DeepSeek splits one usage day across two Platform endpoints,
+    /// so a retired or lagging model can carry tokens on a day whose cost bucket has not been
+    /// reported. That leaves the day's per-model split unprovable while the day itself is still
+    /// priced, which is why `hasCompleteModelCostCoverage` refuses it. Keep the named rows visible
+    /// behind the existing partial-model warning — with a nil cost wherever the vendor reported none
+    /// — instead of dropping the provider's whole breakdown. Scoped to DeepSeek rather than every
+    /// vendor-metered source so it cannot widen another provider's rows.
+    static func canRetainPartialVendorMeteredModelHistory(_ summary: InputSummary) -> Bool {
+        guard summary.input.provider == .deepseek,
+              summary.input.snapshot.costProvenance == .vendorMetered
+        else { return false }
+        return summary.entries.contains(where: { Self.hasRetainablePartialVendorMeteredModelRows($0.entry) })
+            && summary.entries.allSatisfy { windowEntry in
+                let entry = windowEntry.entry
+                return Self.hasCompleteModelCostCoverage(entry)
+                    || Self.hasRetainablePartialVendorMeteredModelRows(entry)
+            }
+    }
+
+    /// Every named row must carry usable tokens and a nil-or-valid cost, and at least one row must
+    /// carry a real cost. Malformed or non-negative token counts stay fail-closed so the list cannot
+    /// present a lower bound as if it were complete; an all-unpriced day keeps using the existing
+    /// unpriced-history path instead of this one.
+    private static func hasRetainablePartialVendorMeteredModelRows(_ entry: CostUsageDailyReport.Entry) -> Bool {
+        guard entry.incompleteRequestCount == 0,
+              let breakdowns = entry.modelBreakdowns,
+              !breakdowns.isEmpty
+        else { return false }
+        var sawCostedRow = false
+        for breakdown in breakdowns {
+            let name = breakdown.modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty, Self.nonnegative(breakdown.totalTokens) != nil else { return false }
+            guard let cost = breakdown.costUSD else { continue }
+            guard Self.validCost(cost) != nil else { return false }
+            sawCostedRow = true
+        }
+        return sawCostedRow
+    }
+
     /// Unpriced named models still belong in the breakdown list. Malformed costs and model-less
     /// gaps stay fail-closed so the list cannot present a lower bound as if it were complete.
     static func canRetainUnpricedModelHistory(_ summary: InputSummary) -> Bool {

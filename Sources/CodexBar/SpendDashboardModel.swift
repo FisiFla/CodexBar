@@ -556,7 +556,8 @@ struct SpendDashboardModel: Equatable, Sendable {
             let retainsModelHistory = if summary.totalCost != nil {
                 summaryModelHistory.completeness == .complete || summary.incompleteRequestCount > 0 ||
                     Self.canRetainPartialCodexModelHistory(summary) ||
-                    Self.canRetainPartialEstimatedModelHistory(summary)
+                    Self.canRetainPartialEstimatedModelHistory(summary) ||
+                    Self.canRetainPartialVendorMeteredModelHistory(summary)
             } else {
                 Self.canRetainUnpricedModelHistory(summary) ||
                     (summary.incompleteRequestCount > 0 && summary.entries
