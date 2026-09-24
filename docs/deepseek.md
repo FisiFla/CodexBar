@@ -125,8 +125,9 @@ Maintenance — DeepSeek has revised these terms repeatedly, so treat a stale sc
 4. Run `swift test --filter DeepSeekPriceScheduleTests`; the Beijing-time test fails until the
    windows match the published terms.
 
-The verification date is rendered next to the clock, so users can see when the mirrored terms were
-last checked, and hovering it names the source and the unmodelled holidays.
+What the user sees without hovering is the **Excludes Chinese public holidays** caption under the tier.
+The source URL and the verification date are one hover away on the pricing badge, so a user who wants to
+know when the mirrored terms were last checked — or where they came from — can find both there.
 
 ## Key files
 

@@ -179,8 +179,8 @@ public struct DeepSeekPriceClockView: View {
     }
 
     /// Names the source and the gaps the schedule does not model. Deliberately a hover hint rather
-    /// than a caption: the card's layout stays stable, so the committed menu screenshots stay
-    /// accurate. `docs/deepseek.md` carries the maintenance procedure.
+    /// than a permanent caption, so the card keeps its layout; `docs/deepseek.md` carries the full
+    /// maintenance procedure.
     private static var scheduleHelpText: String {
         L(
             "Peak and off-peak windows mirror DeepSeek's published pricing terms at %@, verified %@. "

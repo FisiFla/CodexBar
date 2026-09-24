@@ -129,7 +129,8 @@ public enum DeepSeekPriceSchedule {
     public static let termsSourceURL = "https://api-docs.deepseek.com/quick_start/pricing"
 
     /// UTC date (`yyyy-MM-dd`) on which the mirrored windows were last checked against
-    /// `termsSourceURL`. Shown in the menu so users can judge how stale the schedule is.
+    /// `termsSourceURL`. Surfaced on the menu's pricing badge as a hover hint, so a user can judge how
+    /// stale the schedule is without the card carrying a permanent caption for it.
     public static let termsLastVerifiedOn = "2026-09-24"
 
     private static var utcCalendar: Calendar {
