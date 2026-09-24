@@ -567,6 +567,7 @@ enum DeepSeekUsageCostParser {
         var tokens = 0
         var cost: Double?
         var requests = 0
+        var dayCostUnavailable = false
 
         if let amounts = amountMap[dateString] {
             for items in amounts.values {
@@ -584,17 +585,32 @@ enum DeepSeekUsageCostParser {
         if let costs = costMap[dateString] {
             for items in costs.values {
                 for item in items {
-                    guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else { continue }
+                    guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else {
+                        dayCostUnavailable = true
+                        continue
+                    }
                     if category != .request {
-                        let amount = Self.parseCostAmount(item.amount)
+                        guard let amount = Self.parseValidCostAmount(item.amount) else {
+                            dayCostUnavailable = true
+                            continue
+                        }
                         if let existing = cost {
-                            cost = existing + amount
+                            let total = existing + amount
+                            if total.isFinite {
+                                cost = total
+                            } else {
+                                dayCostUnavailable = true
+                            }
                         } else {
                             cost = amount
                         }
                     }
                 }
             }
+        }
+
+        if dayCostUnavailable {
+            cost = nil
         }
 
         return DayAggregationResult(tokens: tokens, cost: cost, requests: requests)
@@ -604,6 +620,7 @@ enum DeepSeekUsageCostParser {
         var tokens = 0
         var cost: Double?
         var requests = 0
+        var monthCostUnavailable = false
 
         for date in ctx.allDates {
             guard let parsed = self.parseDate(date, calendar: ctx.calendar),
@@ -627,11 +644,22 @@ enum DeepSeekUsageCostParser {
             if let costs = ctx.costMap[date] {
                 for items in costs.values {
                     for item in items {
-                        guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else { continue }
+                        guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else {
+                            monthCostUnavailable = true
+                            continue
+                        }
                         if category != .request {
-                            let amount = Self.parseCostAmount(item.amount)
+                            guard let amount = Self.parseValidCostAmount(item.amount) else {
+                                monthCostUnavailable = true
+                                continue
+                            }
                             if let existing = cost {
-                                cost = existing + amount
+                                let total = existing + amount
+                                if total.isFinite {
+                                    cost = total
+                                } else {
+                                    monthCostUnavailable = true
+                                }
                             } else {
                                 cost = amount
                             }
@@ -639,6 +667,10 @@ enum DeepSeekUsageCostParser {
                     }
                 }
             }
+        }
+
+        if monthCostUnavailable {
+            cost = nil
         }
 
         return DayAggregationResult(tokens: tokens, cost: cost, requests: requests)
@@ -651,6 +683,7 @@ enum DeepSeekUsageCostParser {
         var modelTokens: [String: Int] = [:]
         var categoryTokens: [DeepSeekUsageCategory: Int] = [:]
         var categoryCosts: [DeepSeekUsageCategory: Double] = [:]
+        var invalidCategories: Set<DeepSeekUsageCategory> = []
         var modelCosts = ModelCostTotals()
 
         for modelUsage in totalAmounts {
@@ -679,8 +712,21 @@ enum DeepSeekUsageCostParser {
                     continue
                 }
                 if category != .request {
-                    let amount = item.amount.flatMap { Double($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                    categoryCosts[category, default: 0] += amount ?? 0
+                    let amount = Self.parseValidCostAmount(item.amount)
+                    if let amount {
+                        if !invalidCategories.contains(category) {
+                            let total = categoryCosts[category, default: 0] + amount
+                            if total.isFinite {
+                                categoryCosts[category] = total
+                            } else {
+                                invalidCategories.insert(category)
+                                categoryCosts.removeValue(forKey: category)
+                            }
+                        }
+                    } else {
+                        invalidCategories.insert(category)
+                        categoryCosts.removeValue(forKey: category)
+                    }
                     modelCosts.add(amount, model: model)
                 }
             }
@@ -695,10 +741,11 @@ enum DeepSeekUsageCostParser {
 
         var breakdown: [DeepSeekCategoryBreakdown] = []
         for category in [DeepSeekUsageCategory.promptCacheHitToken, .promptCacheMissToken, .responseToken] {
+            let catCost = invalidCategories.contains(category) ? nil : categoryCosts[category]
             breakdown.append(DeepSeekCategoryBreakdown(
                 category: category,
                 tokens: categoryTokens[category] ?? 0,
-                cost: categoryCosts[category]))
+                cost: catCost))
         }
 
         return (topModel, breakdown, modelCosts.values)
@@ -723,6 +770,7 @@ enum DeepSeekUsageCostParser {
             var dayCacheHits = 0
             var dayCacheMisses = 0
             var dayResponses = 0
+            var dayCostUnavailable = false
 
             var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
             let allModels = Set(amounts.keys).union(costs.keys).sorted()
@@ -754,22 +802,31 @@ enum DeepSeekUsageCostParser {
                     }
                 }
 
-                let mCost: Double? = {
-                    guard let costItems = costs[model] else { return nil }
+                let (mCost, isCostInvalid): (Double?, Bool) = {
+                    guard let costItems = costs[model] else { return (nil, false) }
                     var sum: Double = 0
                     var hasValidCost = false
                     for item in costItems {
-                        guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else { continue }
+                        guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else {
+                            return (nil, true)
+                        }
                         if category != .request {
                             guard let amount = Self.parseValidCostAmount(item.amount) else {
-                                return nil
+                                return (nil, true)
                             }
                             sum += amount
                             hasValidCost = true
                         }
                     }
-                    return hasValidCost ? sum : nil
+                    if hasValidCost && !sum.isFinite {
+                        return (nil, true)
+                    }
+                    return (hasValidCost ? sum : nil, false)
                 }()
+
+                if isCostInvalid {
+                    dayCostUnavailable = true
+                }
 
                 dayTokens += mTokens
                 dayRequests += mRequests
@@ -778,10 +835,17 @@ enum DeepSeekUsageCostParser {
                 dayResponses += mResponse
 
                 if let mCost {
-                    if let existing = dayCost {
-                        dayCost = existing + mCost
-                    } else {
-                        dayCost = mCost
+                    if !dayCostUnavailable {
+                        if let existing = dayCost {
+                            let total = existing + mCost
+                            if total.isFinite {
+                                dayCost = total
+                            } else {
+                                dayCostUnavailable = true
+                            }
+                        } else {
+                            dayCost = mCost
+                        }
                     }
                 }
 
@@ -795,6 +859,10 @@ enum DeepSeekUsageCostParser {
                         outputTokens: mResponse,
                         cacheReadTokens: mCacheHit))
                 }
+            }
+
+            if dayCostUnavailable {
+                dayCost = nil
             }
 
             let hasCategoryTokens = dayCacheHits > 0 || dayCacheMisses > 0 || dayResponses > 0
@@ -819,12 +887,6 @@ enum DeepSeekUsageCostParser {
             return 0
         }
         return Int(intValue)
-    }
-
-    private static func parseCostAmount(_ value: String?) -> Double {
-        guard let value else { return 0 }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return Double(trimmed) ?? 0
     }
 
     private static func parseValidCostAmount(_ value: String?) -> Double? {
@@ -907,7 +969,7 @@ enum DeepSeekUsageCostParser {
             todayTokens: today?.totalTokens ?? 0,
             currentMonthTokens: dailyResult.periodTokens,
             todayCost: parsedCost.dayCosts[todayString],
-            currentMonthCost: parsedCost.dayCosts.values.reduce(0, +),
+            currentMonthCost: parsedCost.periodCost,
             requestCount: today?.requestCount ?? 0,
             currentMonthRequestCount: dailyResult.periodRequests,
             topModel: topModel,
@@ -969,6 +1031,7 @@ enum DeepSeekUsageCostParser {
         var modelCosts: [DeepSeekModelCost] = []
         var apiKeyIDs: Set<String> = []
         var currency: String = "CNY"
+        var periodCost: Double?
     }
 
     private static func parseCostSeries(
@@ -984,6 +1047,7 @@ enum DeepSeekUsageCostParser {
         var dayModelCostTotals: [String: ModelCostTotals] = [:]
         var dayCostTotals: [String: Double] = [:]
         var dayCostUnavailable: Set<String> = []
+        var periodCostUnavailable = false
 
         for series in selectedBlock?.series ?? [] {
             if let id = series.apiKey?.id {
@@ -991,6 +1055,7 @@ enum DeepSeekUsageCostParser {
             }
             guard let buckets = series.buckets else {
                 modelCostTotals.add(nil, model: series.model)
+                periodCostUnavailable = true
                 continue
             }
             let rawModel = series.model?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1006,11 +1071,15 @@ enum DeepSeekUsageCostParser {
                         } else {
                             dayCostUnavailable.insert(date)
                             dayCostTotals.removeValue(forKey: date)
+                            periodCostUnavailable = true
                         }
                     } else {
                         dayCostUnavailable.insert(date)
                         dayCostTotals.removeValue(forKey: date)
+                        periodCostUnavailable = true
                     }
+                } else if amount == nil {
+                    periodCostUnavailable = true
                 }
                 if let rawModel, !rawModel.isEmpty {
                     dayModelCostTotals[date, default: ModelCostTotals()].add(amount, model: rawModel)
@@ -1021,6 +1090,15 @@ enum DeepSeekUsageCostParser {
         result.dayCosts = dayCostTotals
         result.dayModelCosts = dayModelCostTotals.mapValues(\.totalsDictionary)
         result.modelCosts = modelCostTotals.values
+
+        if periodCostUnavailable || !dayCostUnavailable.isEmpty {
+            result.periodCost = nil
+        } else if result.dayCostReported.isEmpty {
+            result.periodCost = nil
+        } else {
+            let total = dayCostTotals.values.reduce(0.0, +)
+            result.periodCost = total.isFinite ? total : nil
+        }
         return result
     }
 
