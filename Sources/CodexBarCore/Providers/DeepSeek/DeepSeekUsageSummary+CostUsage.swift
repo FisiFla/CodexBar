@@ -19,6 +19,10 @@ extension DeepSeekUsageSummary {
         }
 
         let isCurrentMonth = self.period == .currentMonth
+        // The fetcher labels the monthly fallback's day buckets with the API calendar (UTC) and the
+        // preferred by-key buckets at the local fixed offset, so the dashboard needs to be told which
+        // calendar produced these dates before it maps them onto the user's own days.
+        let dailyDateBasis: CostUsageDailyDateBasis = isCurrentMonth ? .utc : .local
         let effectiveHistoryDays: Int = {
             if isCurrentMonth {
                 var cal = Calendar(identifier: .gregorian)
@@ -40,6 +44,7 @@ extension DeepSeekUsageSummary {
             historyDays: effectiveHistoryDays,
             historyLabel: isCurrentMonth ? "This month" : nil,
             costProvenance: .vendorMetered,
+            dailyDateBasis: dailyDateBasis,
             daily: entries,
             updatedAt: self.updatedAt)
     }

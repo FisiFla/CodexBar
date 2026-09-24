@@ -204,6 +204,16 @@ public struct CostUsageTimedEntry: Sendable, Equatable {
     }
 }
 
+/// Which calendar the daily `date` keys in a snapshot are bucketed in.
+///
+/// Most sources scan local files and label days in the user's own calendar. A few report
+/// vendor-defined days instead — DeepSeek's monthly fallback labels days in UTC — so any surface
+/// that groups those keys into the user's days must know which calendar produced them.
+public enum CostUsageDailyDateBasis: Sendable, Equatable {
+    case local
+    case utc
+}
+
 public struct CostUsageTokenSnapshot: Sendable, Equatable {
     public let sessionTokens: Int?
     public let sessionCostUSD: Double?
@@ -229,6 +239,8 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
     /// Internal credential scope used to prevent cross-account cache publication. This is a
     /// non-reversible fingerprint, not account identity, and is not emitted by CLI payloads.
     public let credentialScopeFingerprint: String?
+    /// Which calendar `daily[].date` was bucketed in. See `CostUsageDailyDateBasis`.
+    public let dailyDateBasis: CostUsageDailyDateBasis
     public let daily: [CostUsageDailyReport.Entry]
     public let projects: [CostUsageProjectBreakdown]
     public let sessions: [CostUsageSessionBreakdown]
@@ -254,6 +266,7 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
         meteredCostUSD: Double? = nil,
         costProvenance: CostProvenance = .unknown,
         credentialScopeFingerprint: String? = nil,
+        dailyDateBasis: CostUsageDailyDateBasis = .local,
         daily: [CostUsageDailyReport.Entry],
         projects: [CostUsageProjectBreakdown] = [],
         sessions: [CostUsageSessionBreakdown] = [],
@@ -276,6 +289,7 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
         self.meteredCostUSD = meteredCostUSD
         self.costProvenance = costProvenance
         self.credentialScopeFingerprint = credentialScopeFingerprint
+        self.dailyDateBasis = dailyDateBasis
         self.daily = daily
         self.projects = projects
         self.sessions = sessions
