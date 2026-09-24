@@ -729,6 +729,10 @@ enum DeepSeekUsageCostParser {
                 $0.cost == $1.cost ? $0.model < $1.model : $0.cost > $1.cost
             }
         }
+
+        var totalsDictionary: [String: Double] {
+            self.totals
+        }
     }
 
     private static func buildDailyUsages(ctx: DailyAggregationContext) -> [DeepSeekDailyUsage] {
@@ -856,8 +860,12 @@ enum DeepSeekUsageCostParser {
     private static func parseValidCostAmount(_ value: String?) -> Double? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        return Double(trimmed)
+        guard !trimmed.isEmpty,
+              let amount = Double(trimmed),
+              amount.isFinite,
+              amount.sign != .minus
+        else { return nil }
+        return amount
     }
 
     private static func parseDate(_ text: String, calendar: Calendar) -> Date? {
@@ -1003,6 +1011,7 @@ enum DeepSeekUsageCostParser {
         let selectedBlock = self.preferredCostBlock(costBlocks)
         result.currency = selectedBlock?.currency?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "CNY"
         var modelCostTotals = ModelCostTotals()
+        var dayModelCostTotals: [String: ModelCostTotals] = [:]
 
         for series in selectedBlock?.series ?? [] {
             if let id = series.apiKey?.id {
@@ -1016,16 +1025,17 @@ enum DeepSeekUsageCostParser {
             for bucket in buckets where bucket.time >= startSeconds && bucket.time < endSeconds {
                 let date = self.dayString(fromUnix: bucket.time, calendar: calendar)
                 result.dayCostReported.insert(date)
-                let amount = bucket.cost.flatMap { Double($0.value) }
+                let amount = bucket.cost.flatMap { Self.parseValidCostAmount($0.value) }
                 if let amount {
                     result.dayCosts[date, default: 0] += amount
-                    if let rawModel, !rawModel.isEmpty {
-                        result.dayModelCosts[date, default: [:]][rawModel, default: 0] += amount
-                    }
+                }
+                if let rawModel, !rawModel.isEmpty {
+                    dayModelCostTotals[date, default: ModelCostTotals()].add(amount, model: rawModel)
                 }
                 modelCostTotals.add(amount, model: series.model)
             }
         }
+        result.dayModelCosts = dayModelCostTotals.mapValues(\.totalsDictionary)
         result.modelCosts = modelCostTotals.values
         return result
     }
