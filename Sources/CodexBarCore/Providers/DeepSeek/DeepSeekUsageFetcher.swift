@@ -198,12 +198,14 @@ public struct DeepSeekUsageSnapshot: Sendable {
             nil
         }
 
+        let costUsage = self.usageSummary?.toCostUsageTokenSnapshot()
         let details = self.usageSummary.map(Self.detailSections) ?? []
         return UsageSnapshot(
             primary: balanceWindow,
             secondary: nil,
             tertiary: nil,
             providerCost: nil,
+            costUsage: costUsage,
             details: details,
             deepseekDetailedUsageState: self.detailedUsageState,
             deepseekPlatformProfiles: self.platformProfiles,

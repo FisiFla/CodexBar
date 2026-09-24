@@ -273,12 +273,33 @@ public struct DeepSeekDailyUsage: Sendable, Equatable {
     public let totalTokens: Int
     public let cost: Double?
     public let requestCount: Int
+    public let inputTokens: Int?
+    public let outputTokens: Int?
+    public let cacheReadTokens: Int?
+    public let modelBreakdowns: [CostUsageDailyReport.ModelBreakdown]?
 
-    public init(date: String, totalTokens: Int, cost: Double?, requestCount: Int) {
+    public init(
+        date: String,
+        totalTokens: Int,
+        cost: Double?,
+        requestCount: Int,
+        inputTokens: Int? = nil,
+        outputTokens: Int? = nil,
+        cacheReadTokens: Int? = nil,
+        modelBreakdowns: [CostUsageDailyReport.ModelBreakdown]? = nil)
+    {
         self.date = date
         self.totalTokens = totalTokens
         self.cost = cost
         self.requestCount = requestCount
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cacheReadTokens = cacheReadTokens
+        self.modelBreakdowns = modelBreakdowns
+    }
+
+    public var modelsUsed: [String]? {
+        self.modelBreakdowns?.map(\.modelName)
     }
 }
 
@@ -867,15 +888,49 @@ enum DeepSeekUsageCostParser {
         for date in Set(dayAmounts.keys).union(dayCosts.keys).sorted() {
             var tokens = 0
             var requests = 0
+            var cacheHits = 0
+            var cacheMisses = 0
+            var responses = 0
+            var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
+
             if let amounts = dayAmounts[date] {
-                for items in amounts.values {
+                for (model, items) in amounts {
+                    var mTokens = 0
+                    var mRequests = 0
+                    var mCacheHit = 0
+                    var mCacheMiss = 0
+                    var mResponse = 0
                     for item in items {
                         guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else { continue }
-                        if category == .request {
-                            requests += self.parseTokenAmount(item.amount)
-                        } else {
-                            tokens += self.parseTokenAmount(item.amount)
+                        let amount = self.parseTokenAmount(item.amount)
+                        switch category {
+                        case .request:
+                            mRequests += amount
+                        case .promptCacheHitToken:
+                            mCacheHit += amount
+                            mTokens += amount
+                        case .promptCacheMissToken:
+                            mCacheMiss += amount
+                            mTokens += amount
+                        case .responseToken:
+                            mResponse += amount
+                            mTokens += amount
                         }
+                    }
+                    requests += mRequests
+                    tokens += mTokens
+                    cacheHits += mCacheHit
+                    cacheMisses += mCacheMiss
+                    responses += mResponse
+                    if mTokens > 0 || mRequests > 0 {
+                        modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
+                            modelName: model,
+                            costUSD: nil,
+                            totalTokens: mTokens,
+                            requestCount: mRequests,
+                            inputTokens: mCacheMiss,
+                            outputTokens: mResponse,
+                            cacheReadTokens: mCacheHit))
                     }
                 }
             }
@@ -885,7 +940,11 @@ enum DeepSeekUsageCostParser {
                 date: date,
                 totalTokens: tokens,
                 cost: dayCosts[date],
-                requestCount: requests))
+                requestCount: requests,
+                inputTokens: cacheMisses > 0 ? cacheMisses : nil,
+                outputTokens: responses > 0 ? responses : nil,
+                cacheReadTokens: cacheHits > 0 ? cacheHits : nil,
+                modelBreakdowns: modelBreakdowns.isEmpty ? nil : modelBreakdowns))
         }
 
         let breakdown = [
