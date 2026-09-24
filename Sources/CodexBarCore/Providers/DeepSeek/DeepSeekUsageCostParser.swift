@@ -783,13 +783,18 @@ enum DeepSeekUsageCostParser {
                 let mCost: Double? = {
                     guard let costItems = costs[model] else { return nil }
                     var sum: Double = 0
+                    var hasValidCost = false
                     for item in costItems {
                         guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else { continue }
                         if category != .request {
-                            sum += Self.parseCostAmount(item.amount)
+                            guard let amount = Self.parseValidCostAmount(item.amount) else {
+                                return nil
+                            }
+                            sum += amount
+                            hasValidCost = true
                         }
                     }
-                    return sum
+                    return hasValidCost ? sum : nil
                 }()
 
                 dayTokens += mTokens
@@ -846,6 +851,13 @@ enum DeepSeekUsageCostParser {
         guard let value else { return 0 }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return Double(trimmed) ?? 0
+    }
+
+    private static func parseValidCostAmount(_ value: String?) -> Double? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return Double(trimmed)
     }
 
     private static func parseDate(_ text: String, calendar: Calendar) -> Date? {
