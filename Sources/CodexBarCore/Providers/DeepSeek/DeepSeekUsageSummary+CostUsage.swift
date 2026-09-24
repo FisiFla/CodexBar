@@ -18,6 +18,17 @@ extension DeepSeekUsageSummary {
                 modelBreakdowns: day.modelBreakdowns)
         }
 
+        let isCurrentMonth = self.period == .currentMonth
+        let effectiveHistoryDays: Int = {
+            if isCurrentMonth {
+                var cal = Calendar(identifier: .gregorian)
+                cal.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+                let dayOfMonth = cal.component(.day, from: self.updatedAt)
+                return max(1, dayOfMonth)
+            }
+            return historyDays
+        }()
+
         return CostUsageTokenSnapshot(
             sessionTokens: self.todayTokens,
             sessionCostUSD: self.todayCost,
@@ -26,7 +37,8 @@ extension DeepSeekUsageSummary {
             last30DaysCostUSD: self.currentMonthCost,
             last30DaysRequests: self.currentMonthRequestCount,
             currencyCode: self.currency,
-            historyDays: historyDays,
+            historyDays: effectiveHistoryDays,
+            historyLabel: isCurrentMonth ? "This month" : nil,
             costProvenance: .vendorMetered,
             daily: entries,
             updatedAt: self.updatedAt)

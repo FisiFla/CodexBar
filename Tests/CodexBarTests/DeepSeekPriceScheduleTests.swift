@@ -1,6 +1,7 @@
 import CodexBarCore
 import Foundation
 import Testing
+@testable import CodexBar
 
 struct DeepSeekPriceScheduleTests {
     private static var utcCalendar: Calendar {
@@ -109,9 +110,9 @@ struct DeepSeekPriceScheduleTests {
     }
 
     @Test
-    func `day segments in local Vienna timezone match expected timeline slices`() {
+    func `day segments in local Vienna timezone match expected timeline slices`() throws {
         // Vienna is UTC+2 in September (CEST)
-        let viennaTZ = TimeZone(identifier: "Europe/Vienna")!
+        let viennaTZ = try #require(TimeZone(identifier: "Europe/Vienna"))
         let date = Self.makeDate(day: 24, hour: 12) // Thursday
         let segments = DeepSeekPriceSchedule.daySegments(for: date, timeZone: viennaTZ)
 
@@ -141,5 +142,64 @@ struct DeepSeekPriceScheduleTests {
         #expect(segments[4].tier == .offPeak)
         #expect(abs(segments[4].startFraction - (12.0 / 24.0)) < 0.001)
         #expect(abs(segments[4].endFraction - 1.0) < 0.001)
+    }
+
+    @Test
+    func `day segments and needle handle daylight saving transition days`() throws {
+        let viennaTZ = try #require(TimeZone(identifier: "Europe/Vienna"))
+        var viennaCal = Calendar(identifier: .gregorian)
+        viennaCal.timeZone = viennaTZ
+
+        // Spring forward: Sunday, March 29, 2026 (23-hour day in Europe/Vienna)
+        var springComps = DateComponents()
+        springComps.year = 2026
+        springComps.month = 3
+        springComps.day = 29
+        springComps.hour = 12 // noon
+        let springNoon = try #require(viennaCal.date(from: springComps))
+
+        let springSegments = DeepSeekPriceSchedule.daySegments(for: springNoon, timeZone: viennaTZ)
+        #expect(!springSegments.isEmpty)
+        #expect(abs(springSegments.first?.startFraction ?? 1.0) < 0.001)
+        #expect(abs((springSegments.last?.endFraction ?? 0.0) - 1.0) < 0.001)
+
+        let springStartOfDay = viennaCal.startOfDay(for: springNoon)
+        let springEndOfDay = try #require(viennaCal.date(byAdding: .day, value: 1, to: springStartOfDay))
+        let springDuration = springEndOfDay.timeIntervalSince(springStartOfDay)
+        #expect(springDuration == 23 * 3600)
+
+        let springPresentation = DeepSeekPriceClockPresentation.make(
+            at: springNoon,
+            timeZone: viennaTZ,
+            isUTC: false)
+        // Spring forward noon: elapsed is 11 hours (02:00-03:00 skipped), actual day duration is 23 hours
+        let expectedSpringFraction = 11.0 / 23.0
+        #expect(abs(springPresentation.currentDayFraction - expectedSpringFraction) < 0.001)
+
+        // Fall back: Sunday, October 25, 2026 (25-hour day in Europe/Vienna)
+        var fallComps = DateComponents()
+        fallComps.year = 2026
+        fallComps.month = 10
+        fallComps.day = 25
+        fallComps.hour = 12 // noon
+        let fallNoon = try #require(viennaCal.date(from: fallComps))
+
+        let fallSegments = DeepSeekPriceSchedule.daySegments(for: fallNoon, timeZone: viennaTZ)
+        #expect(!fallSegments.isEmpty)
+        #expect(abs(fallSegments.first?.startFraction ?? 1.0) < 0.001)
+        #expect(abs((fallSegments.last?.endFraction ?? 0.0) - 1.0) < 0.001)
+
+        let fallStartOfDay = viennaCal.startOfDay(for: fallNoon)
+        let fallEndOfDay = try #require(viennaCal.date(byAdding: .day, value: 1, to: fallStartOfDay))
+        let fallDuration = fallEndOfDay.timeIntervalSince(fallStartOfDay)
+        #expect(fallDuration == 25 * 3600)
+
+        let fallPresentation = DeepSeekPriceClockPresentation.make(
+            at: fallNoon,
+            timeZone: viennaTZ,
+            isUTC: false)
+        // Fall back noon: elapsed is 13 hours (02:00 repeated), actual day duration is 25 hours
+        let expectedFallFraction = 13.0 / 25.0
+        #expect(abs(fallPresentation.currentDayFraction - expectedFallFraction) < 0.001)
     }
 }

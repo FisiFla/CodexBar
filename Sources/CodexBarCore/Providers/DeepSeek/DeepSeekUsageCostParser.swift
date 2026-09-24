@@ -447,12 +447,12 @@ enum DeepSeekUsageCostParser {
             var result: [String: [String: [DeepSeekUsageItem]]] = [:]
             for dayUsage in dailyAmounts {
                 guard let date = dayUsage.date else { continue }
-                var modelMap: [String: [DeepSeekUsageItem]] = [:]
+                var modelMap = result[date] ?? [:]
                 for modelUsage in dayUsage.data ?? [] {
                     guard let model = modelUsage.model else { continue }
                     let items = modelUsage.usage ?? []
                     if !items.isEmpty {
-                        modelMap[model] = items
+                        modelMap[model, default: []].append(contentsOf: items)
                     }
                 }
                 if !modelMap.isEmpty {
@@ -468,12 +468,12 @@ enum DeepSeekUsageCostParser {
             var result: [String: [String: [DeepSeekCostItem]]] = [:]
             for dayUsage in dailyCosts {
                 guard let date = dayUsage.date else { continue }
-                var modelMap: [String: [DeepSeekCostItem]] = [:]
+                var modelMap = result[date] ?? [:]
                 for modelUsage in dayUsage.data ?? [] {
                     guard let model = modelUsage.model else { continue }
                     let items = modelUsage.usage ?? []
                     if !items.isEmpty {
-                        modelMap[model] = items
+                        modelMap[model, default: []].append(contentsOf: items)
                     }
                 }
                 if !modelMap.isEmpty {
@@ -740,44 +740,97 @@ enum DeepSeekUsageCostParser {
                   parsed <= ctx.now
             else { continue }
 
+            let amounts = ctx.amountMap[date] ?? [:]
+            let costs = ctx.costMap[date] ?? [:]
+            let hasCostData = ctx.costMap[date] != nil
+
             var dayTokens = 0
             var dayCost: Double?
             var dayRequests = 0
+            var dayCacheHits = 0
+            var dayCacheMisses = 0
+            var dayResponses = 0
 
-            if let amounts = ctx.amountMap[date] {
-                for items in amounts.values {
+            var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
+            let allModels = Set(amounts.keys).union(costs.keys).sorted()
+
+            for model in allModels {
+                var mTokens = 0
+                var mRequests = 0
+                var mCacheHit = 0
+                var mCacheMiss = 0
+                var mResponse = 0
+
+                if let items = amounts[model] {
                     for item in items {
                         guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else { continue }
-                        if category == .request {
-                            dayRequests += Self.parseTokenAmount(item.amount)
-                        } else {
-                            dayTokens += Self.parseTokenAmount(item.amount)
+                        let amount = Self.parseTokenAmount(item.amount)
+                        switch category {
+                        case .request:
+                            mRequests += amount
+                        case .promptCacheHitToken:
+                            mCacheHit += amount
+                            mTokens += amount
+                        case .promptCacheMissToken:
+                            mCacheMiss += amount
+                            mTokens += amount
+                        case .responseToken:
+                            mResponse += amount
+                            mTokens += amount
                         }
                     }
                 }
-            }
 
-            if let costs = ctx.costMap[date] {
-                for items in costs.values {
-                    for item in items {
-                        guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else { continue }
-                        if category != .request {
-                            let amount = Self.parseCostAmount(item.amount)
-                            if let existing = dayCost {
-                                dayCost = existing + amount
-                            } else {
-                                dayCost = amount
+                let mCost: Double? = {
+                    if let costItems = costs[model] {
+                        var sum: Double = 0
+                        for item in costItems {
+                            guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else { continue }
+                            if category != .request {
+                                sum += Self.parseCostAmount(item.amount)
                             }
                         }
+                        return sum
                     }
+                    return hasCostData ? 0.0 : nil
+                }()
+
+                dayTokens += mTokens
+                dayRequests += mRequests
+                dayCacheHits += mCacheHit
+                dayCacheMisses += mCacheMiss
+                dayResponses += mResponse
+
+                if let mCost {
+                    if let existing = dayCost {
+                        dayCost = existing + mCost
+                    } else {
+                        dayCost = mCost
+                    }
+                }
+
+                if mTokens > 0 || mRequests > 0 || (mCost ?? 0) > 0 {
+                    modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
+                        modelName: model,
+                        costUSD: mCost,
+                        totalTokens: mTokens,
+                        requestCount: mRequests,
+                        inputTokens: mCacheMiss,
+                        outputTokens: mResponse,
+                        cacheReadTokens: mCacheHit))
                 }
             }
 
+            let hasCategoryTokens = dayCacheHits > 0 || dayCacheMisses > 0 || dayResponses > 0
             result.append(DeepSeekDailyUsage(
                 date: date,
                 totalTokens: dayTokens,
                 cost: dayCost,
-                requestCount: dayRequests))
+                requestCount: dayRequests,
+                inputTokens: hasCategoryTokens ? dayCacheMisses : nil,
+                outputTokens: hasCategoryTokens ? dayResponses : nil,
+                cacheReadTokens: hasCategoryTokens ? dayCacheHits : nil,
+                modelBreakdowns: modelBreakdowns.isEmpty ? nil : modelBreakdowns))
         }
 
         return result
@@ -828,14 +881,75 @@ enum DeepSeekUsageCostParser {
         let startSeconds = Int(start.timeIntervalSince1970)
         let endSeconds = Int(end.timeIntervalSince1970)
 
+        let parsedAmount = self.parseAmountSeries(
+            amount.data?.bizData?.series ?? [],
+            startSeconds: startSeconds,
+            endSeconds: endSeconds,
+            calendar: calendar)
+
+        let parsedCost = self.parseCostSeries(
+            cost.data?.bizData?.data ?? [],
+            startSeconds: startSeconds,
+            endSeconds: endSeconds,
+            calendar: calendar)
+
+        let apiKeyIDs = parsedAmount.apiKeyIDs.union(parsedCost.apiKeyIDs)
+        let dailyResult = self.buildByAPIKeyDailyUsages(
+            dayAmounts: parsedAmount.dayAmounts,
+            dayCosts: parsedCost.dayCosts,
+            dayModelCosts: parsedCost.dayModelCosts,
+            dayCostReported: parsedCost.dayCostReported)
+
+        let todayString = AggregationContext.dayString(now, calendar: calendar)
+        let breakdown = [
+            DeepSeekUsageCategory.promptCacheHitToken,
+            .promptCacheMissToken,
+            .responseToken,
+        ].map { category in
+            DeepSeekCategoryBreakdown(category: category, tokens: parsedAmount.categoryTotals[category] ?? 0, cost: nil)
+        }
+        let topModel = parsedAmount.modelTokens.max {
+            if $0.value == $1.value {
+                return $0.key > $1.key
+            }
+            return $0.value < $1.value
+        }?.key
+
+        let today = dailyResult.daily.first { $0.date == todayString }
+        return DeepSeekUsageSummary(
+            todayTokens: today?.totalTokens ?? 0,
+            currentMonthTokens: dailyResult.periodTokens,
+            todayCost: parsedCost.dayCosts[todayString],
+            currentMonthCost: parsedCost.dayCosts.values.reduce(0, +),
+            requestCount: today?.requestCount ?? 0,
+            currentMonthRequestCount: dailyResult.periodRequests,
+            topModel: topModel,
+            categoryBreakdown: breakdown,
+            daily: dailyResult.daily,
+            currency: parsedCost.currency,
+            modelCosts: parsedCost.modelCosts,
+            apiKeyCount: apiKeyIDs.count,
+            period: .last30Days,
+            updatedAt: now)
+    }
+
+    private struct ParsedAmountSeries {
         var dayAmounts: [String: [String: [DeepSeekUsageItem]]] = [:]
         var categoryTotals: [DeepSeekUsageCategory: Int] = [:]
         var modelTokens: [String: Int] = [:]
-        var apiKeyIDs = Set<String>()
+        var apiKeyIDs: Set<String> = []
+    }
 
-        for series in amount.data?.bizData?.series ?? [] {
+    private static func parseAmountSeries(
+        _ seriesList: [ByAPIKeyAmountSeries],
+        startSeconds: Int,
+        endSeconds: Int,
+        calendar: Calendar) -> ParsedAmountSeries
+    {
+        var result = ParsedAmountSeries()
+        for series in seriesList {
             if let id = series.apiKey?.id {
-                apiKeyIDs.insert(id)
+                result.apiKeyIDs.insert(id)
             }
             let model = series.model ?? "unknown"
             for bucket in series.buckets ?? [] where bucket.time >= startSeconds && bucket.time < endSeconds {
@@ -848,43 +962,81 @@ enum DeepSeekUsageCostParser {
                     if category == .request {
                         continue
                     }
-                    categoryTotals[category, default: 0] += value
-                    modelTokens[model, default: 0] += value
+                    result.categoryTotals[category, default: 0] += value
+                    result.modelTokens[model, default: 0] += value
                 }
-                let existing = dayAmounts[date]?[model] ?? []
-                var merged = existing
+                var models = result.dayAmounts[date] ?? [:]
+                var merged = models[model] ?? []
                 merged.append(contentsOf: items)
-                var models = dayAmounts[date] ?? [:]
                 models[model] = merged
-                dayAmounts[date] = models
+                result.dayAmounts[date] = models
             }
         }
+        return result
+    }
 
+    private struct ParsedCostSeries {
         var dayCosts: [String: Double] = [:]
-        var modelCosts = ModelCostTotals()
-        let costBlocks = cost.data?.bizData?.data ?? []
+        var dayModelCosts: [String: [String: Double]] = [:]
+        var dayCostReported: Set<String> = []
+        var modelCosts: [DeepSeekModelCost] = []
+        var apiKeyIDs: Set<String> = []
+        var currency: String = "CNY"
+    }
+
+    private static func parseCostSeries(
+        _ costBlocks: [ByAPIKeyCostCurrency],
+        startSeconds: Int,
+        endSeconds: Int,
+        calendar: Calendar) -> ParsedCostSeries
+    {
+        var result = ParsedCostSeries()
         let selectedBlock = self.preferredCostBlock(costBlocks)
-        let currency = selectedBlock?.currency?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "CNY"
+        result.currency = selectedBlock?.currency?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "CNY"
+        var modelCostTotals = ModelCostTotals()
+
         for series in selectedBlock?.series ?? [] {
             if let id = series.apiKey?.id {
-                apiKeyIDs.insert(id)
+                result.apiKeyIDs.insert(id)
             }
             guard let buckets = series.buckets else {
-                modelCosts.add(nil, model: series.model)
+                modelCostTotals.add(nil, model: series.model)
                 continue
             }
+            let rawModel = series.model?.trimmingCharacters(in: .whitespacesAndNewlines)
             for bucket in buckets where bucket.time >= startSeconds && bucket.time < endSeconds {
                 let date = self.dayString(fromUnix: bucket.time, calendar: calendar)
+                result.dayCostReported.insert(date)
                 let amount = bucket.cost.flatMap { Double($0.value) }
-                dayCosts[date, default: 0] += amount ?? 0
-                modelCosts.add(amount, model: series.model)
+                if let amount {
+                    result.dayCosts[date, default: 0] += amount
+                    if let rawModel, !rawModel.isEmpty {
+                        result.dayModelCosts[date, default: [:]][rawModel, default: 0] += amount
+                    }
+                }
+                modelCostTotals.add(amount, model: series.model)
             }
         }
+        result.modelCosts = modelCostTotals.values
+        return result
+    }
 
-        let todayString = AggregationContext.dayString(now, calendar: calendar)
+    private struct ByAPIKeyDailyResult {
+        let daily: [DeepSeekDailyUsage]
+        let periodTokens: Int
+        let periodRequests: Int
+    }
+
+    private static func buildByAPIKeyDailyUsages(
+        dayAmounts: [String: [String: [DeepSeekUsageItem]]],
+        dayCosts: [String: Double],
+        dayModelCosts: [String: [String: Double]],
+        dayCostReported: Set<String>) -> ByAPIKeyDailyResult
+    {
         var periodTokens = 0
         var periodRequests = 0
         var daily: [DeepSeekDailyUsage] = []
+
         for date in Set(dayAmounts.keys).union(dayCosts.keys).sorted() {
             var tokens = 0
             var requests = 0
@@ -893,13 +1045,19 @@ enum DeepSeekUsageCostParser {
             var responses = 0
             var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
 
-            if let amounts = dayAmounts[date] {
-                for (model, items) in amounts {
-                    var mTokens = 0
-                    var mRequests = 0
-                    var mCacheHit = 0
-                    var mCacheMiss = 0
-                    var mResponse = 0
+            let modelAmounts = dayAmounts[date] ?? [:]
+            let modelCostsOnDate = dayModelCosts[date] ?? [:]
+            let hasCostData = dayCostReported.contains(date)
+            let allModels = Set(modelAmounts.keys).union(modelCostsOnDate.keys).sorted()
+
+            for model in allModels {
+                var mTokens = 0
+                var mRequests = 0
+                var mCacheHit = 0
+                var mCacheMiss = 0
+                var mResponse = 0
+
+                if let items = modelAmounts[model] {
                     for item in items {
                         guard let category = DeepSeekUsageCategory(rawValue: item.type ?? "") else { continue }
                         let amount = self.parseTokenAmount(item.amount)
@@ -917,66 +1075,52 @@ enum DeepSeekUsageCostParser {
                             mTokens += amount
                         }
                     }
-                    requests += mRequests
-                    tokens += mTokens
-                    cacheHits += mCacheHit
-                    cacheMisses += mCacheMiss
-                    responses += mResponse
-                    if mTokens > 0 || mRequests > 0 {
-                        modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
-                            modelName: model,
-                            costUSD: nil,
-                            totalTokens: mTokens,
-                            requestCount: mRequests,
-                            inputTokens: mCacheMiss,
-                            outputTokens: mResponse,
-                            cacheReadTokens: mCacheHit))
-                    }
+                }
+
+                let mCost: Double? = if let costVal = modelCostsOnDate[model] {
+                    costVal
+                } else if hasCostData {
+                    0.0
+                } else {
+                    nil
+                }
+
+                requests += mRequests
+                tokens += mTokens
+                cacheHits += mCacheHit
+                cacheMisses += mCacheMiss
+                responses += mResponse
+
+                if mTokens > 0 || mRequests > 0 || (mCost ?? 0) > 0 {
+                    modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
+                        modelName: model,
+                        costUSD: mCost,
+                        totalTokens: mTokens,
+                        requestCount: mRequests,
+                        inputTokens: mCacheMiss,
+                        outputTokens: mResponse,
+                        cacheReadTokens: mCacheHit))
                 }
             }
+
             periodTokens += tokens
             periodRequests += requests
+            let hasCategoryTokens = cacheHits > 0 || cacheMisses > 0 || responses > 0
             daily.append(DeepSeekDailyUsage(
                 date: date,
                 totalTokens: tokens,
                 cost: dayCosts[date],
                 requestCount: requests,
-                inputTokens: cacheMisses > 0 ? cacheMisses : nil,
-                outputTokens: responses > 0 ? responses : nil,
-                cacheReadTokens: cacheHits > 0 ? cacheHits : nil,
+                inputTokens: hasCategoryTokens ? cacheMisses : nil,
+                outputTokens: hasCategoryTokens ? responses : nil,
+                cacheReadTokens: hasCategoryTokens ? cacheHits : nil,
                 modelBreakdowns: modelBreakdowns.isEmpty ? nil : modelBreakdowns))
         }
 
-        let breakdown = [
-            DeepSeekUsageCategory.promptCacheHitToken,
-            .promptCacheMissToken,
-            .responseToken,
-        ].map { category in
-            DeepSeekCategoryBreakdown(category: category, tokens: categoryTotals[category] ?? 0, cost: nil)
-        }
-        let topModel = modelTokens.max {
-            if $0.value == $1.value {
-                return $0.key > $1.key
-            }
-            return $0.value < $1.value
-        }?.key
-
-        let today = daily.first { $0.date == todayString }
-        return DeepSeekUsageSummary(
-            todayTokens: today?.totalTokens ?? 0,
-            currentMonthTokens: periodTokens,
-            todayCost: dayCosts[todayString],
-            currentMonthCost: dayCosts.values.reduce(0, +),
-            requestCount: today?.requestCount ?? 0,
-            currentMonthRequestCount: periodRequests,
-            topModel: topModel,
-            categoryBreakdown: breakdown,
+        return ByAPIKeyDailyResult(
             daily: daily,
-            currency: currency,
-            modelCosts: modelCosts.values,
-            apiKeyCount: apiKeyIDs.count,
-            period: .last30Days,
-            updatedAt: now)
+            periodTokens: periodTokens,
+            periodRequests: periodRequests)
     }
 
     private static func decodeByAPIKeyPayloads(amountData: Data, costData: Data) throws

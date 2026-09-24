@@ -141,8 +141,10 @@ public struct DeepSeekPriceClockPresentation: Equatable, Sendable {
         }
 
         let startOfDay = calendar.startOfDay(for: now)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay.addingTimeInterval(86400)
+        let dayDuration = max(1.0, endOfDay.timeIntervalSince(startOfDay))
         let elapsed = now.timeIntervalSince(startOfDay)
-        let dayFraction = min(1.0, max(0.0, elapsed / 86400.0))
+        let dayFraction = min(1.0, max(0.0, elapsed / dayDuration))
 
         let timeZoneName = isUTC ? "UTC" : (effectiveTimeZone.identifier)
         let secondsFromGMT = effectiveTimeZone.secondsFromGMT(for: now)
