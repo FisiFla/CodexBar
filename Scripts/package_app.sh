@@ -262,12 +262,12 @@ if [[ -f "$ICON_SOURCE" ]]; then
 fi
 
 BUNDLE_ID="com.steipete.codexbar"
-FEED_URL="https://raw.githubusercontent.com/steipete/CodexBar/main/appcast.xml"
-AUTO_CHECKS=true
+# Fork: never self-update from upstream's appcast. This fork ships its own
+# DeepSeek feature set, so an upstream release would silently replace it.
+FEED_URL=""
+AUTO_CHECKS=false
 if [[ "$LOWER_CONF" == "debug" ]]; then
   BUNDLE_ID="com.steipete.codexbar.debug"
-  FEED_URL=""
-  AUTO_CHECKS=false
 fi
 if [[ "$SIGNING_MODE" == "adhoc" ]]; then
   FEED_URL=""
@@ -350,8 +350,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>CodexBar</string>
-    <key>CFBundleDisplayName</key><string>CodexBar</string>
+    <key>CFBundleName</key><string>CodexBar Extra</string>
+    <key>CFBundleDisplayName</key><string>CodexBar Extra</string>
     <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
     <key>CFBundleExecutable</key><string>CodexBar</string>
     <key>CFBundlePackageType</key><string>APPL</string>
