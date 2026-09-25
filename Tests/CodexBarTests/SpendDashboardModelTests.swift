@@ -79,7 +79,7 @@ struct SpendDashboardModelTests {
             .cursor,
             .grok,
             .opencodego,
-            .openrouter,
+            .deepseek, .openrouter,
             .xai,
             // Antigravity and Muse provide local token history without monetary values.
             .antigravity, .muse, .pi,

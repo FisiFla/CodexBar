@@ -18,6 +18,7 @@ struct ProviderUsageItemID: Hashable, Sendable {
 
     static let credits = Self(rawValue: "section:credits")
     static let codexResetCredits = Self(rawValue: "section:codex-reset-credits")
+    static let deepSeekPriceClock = Self(rawValue: "section:deepseek-price-clock")
 
     static func metric(_ metricID: String) -> Self {
         Self(rawValue: "\(self.metricPrefix)\(metricID)")
@@ -40,6 +41,7 @@ extension ProviderUsageItemID {
         switch self {
         case .credits: return L("Credits")
         case .codexResetCredits: return L("Limit Reset Credits")
+        case .deepSeekPriceClock: return L("Peak Price Clock")
         default:
             if let detailSectionTitle {
                 return L(detailSectionTitle)
@@ -76,6 +78,12 @@ extension UsageMenuCardView.Model {
             descriptors.append(ProviderUsageItemDescriptor(
                 id: .codexResetCredits,
                 title: L("Limit Reset Credits")))
+        }
+        // Provider-specific by design: DeepSeek price clock has dedicated visibility choice.
+        if self.provider == .deepseek, self.deepSeekPriceClock != nil {
+            descriptors.append(ProviderUsageItemDescriptor(
+                id: .deepSeekPriceClock,
+                title: L("Peak Price Clock")))
         }
         if self.creditsText != nil {
             descriptors.append(ProviderUsageItemDescriptor(id: .credits, title: L("Credits")))
@@ -129,6 +137,9 @@ extension UsageMenuCardView.Model {
         }
         if hiddenItemIDs.contains(.codexResetCredits) {
             projected.limitResetCredits = nil
+        }
+        if hiddenItemIDs.contains(.deepSeekPriceClock) {
+            projected.deepSeekPriceClock = nil
         }
         let hiddenTitles = Set(hiddenItemIDs.compactMap(\.detailSectionTitle))
         if !hiddenTitles.isEmpty {

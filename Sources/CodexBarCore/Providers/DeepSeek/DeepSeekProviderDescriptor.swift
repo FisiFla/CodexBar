@@ -103,7 +103,7 @@ public enum DeepSeekProviderDescriptor {
                 ],
                 widgetColor: ProviderColor(red: 82 / 255, green: 125 / 255, blue: 240 / 255)),
             tokenCost: ProviderTokenCostConfig(
-                supportsTokenCost: false,
+                supportsTokenCost: true,
                 noDataMessage: { "DeepSeek per-day cost history is not available via API." }),
             presentation: ProviderUsagePresentation(
                 menuCard: ProviderMenuCardPresentation(
@@ -136,7 +136,8 @@ public enum DeepSeekProviderDescriptor {
                     },
                     showsPrimaryBalanceDescription: true,
                     hidesPrimaryResetWithoutDate: true,
-                    movePrimaryDetailToStatus: { _ in true }),
+                    movePrimaryDetailToStatus: { _ in true },
+                    showsDeepSeekPriceClock: true),
                 menu: ProviderMenuDescriptorPresentation(primaryDescriptionIsDetail: { _ in true }),
                 optionalDetails: ProviderOptionalDetailsPresentation(
                     hidesAllWithoutOptionalUsage: true,

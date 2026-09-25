@@ -906,10 +906,18 @@ extension DeepSeekUsageCostParserTests {
         #expect(summary.todayCost == 0.12)
         #expect(summary.currentMonthRequestCount == 2)
         #expect(summary.apiKeyCount == 1)
-        #expect(summary.topModel == "deepseek-chat")
         #expect(summary.daily.count == 1)
         #expect(summary.daily[0].totalTokens == 175)
         #expect(summary.daily[0].cost == 0.12)
+        #expect(summary.daily[0].inputTokens == 50)
+        #expect(summary.daily[0].outputTokens == 25)
+        #expect(summary.daily[0].cacheReadTokens == 100)
+        #expect(summary.daily[0].modelBreakdowns?.count == 1)
+        #expect(summary.daily[0].modelBreakdowns?[0].modelName == "deepseek-chat")
+        #expect(summary.daily[0].modelBreakdowns?[0].costUSD == 0.12)
+        #expect(summary.daily[0].modelBreakdowns?[0].inputTokens == 50)
+        #expect(summary.daily[0].modelBreakdowns?[0].outputTokens == 25)
+        #expect(summary.daily[0].modelBreakdowns?[0].cacheReadTokens == 100)
         #expect(summary.period == .last30Days)
     }
 
@@ -968,6 +976,364 @@ extension DeepSeekUsageCostParserTests {
             calendar: self.fixtureCalendar)
         #expect(summary.currency == "USD")
         #expect(summary.todayCost == 1)
+    }
+
+    @Test
+    func `monthly fallback populates daily token categories and per model costs`() throws {
+        let dateString = "2026-05-26"
+        let amountJSON = """
+        {
+          "code": 0,
+          "msg": "",
+          "data": {
+            "biz_code": 0,
+            "biz_msg": "",
+            "biz_data": {
+              "total": [
+                {
+                  "model": "deepseek-chat",
+                  "usage": [
+                    {"type": "PROMPT_CACHE_HIT_TOKEN", "amount": "1000"},
+                    {"type": "PROMPT_CACHE_MISS_TOKEN", "amount": "500"},
+                    {"type": "RESPONSE_TOKEN", "amount": "200"},
+                    {"type": "REQUEST", "amount": "5"}
+                  ]
+                }
+              ],
+              "days": [
+                {
+                  "date": "\(dateString)",
+                  "data": [
+                    {
+                      "model": "deepseek-chat",
+                      "usage": [
+                        {"type": "PROMPT_CACHE_HIT_TOKEN", "amount": "1000"},
+                        {"type": "PROMPT_CACHE_MISS_TOKEN", "amount": "500"},
+                        {"type": "RESPONSE_TOKEN", "amount": "200"},
+                        {"type": "REQUEST", "amount": "5"}
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        let costJSON = """
+        {
+          "code": 0,
+          "msg": "",
+          "data": {
+            "biz_code": 0,
+            "biz_msg": "",
+            "biz_data": [
+              {
+                "currency": "CNY",
+                "total": [
+                  {
+                    "model": "deepseek-chat",
+                    "usage": [
+                      {"type": "PROMPT_CACHE_HIT_TOKEN", "amount": "0.10"},
+                      {"type": "PROMPT_CACHE_MISS_TOKEN", "amount": "0.20"},
+                      {"type": "RESPONSE_TOKEN", "amount": "0.30"}
+                    ]
+                  }
+                ],
+                "days": [
+                  {
+                    "date": "\(dateString)",
+                    "data": [
+                      {
+                        "model": "deepseek-chat",
+                        "usage": [
+                          {"type": "PROMPT_CACHE_HIT_TOKEN", "amount": "0.10"},
+                          {"type": "PROMPT_CACHE_MISS_TOKEN", "amount": "0.20"},
+                          {"type": "RESPONSE_TOKEN", "amount": "0.30"}
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """
+
+        let summary = try DeepSeekUsageFetcher._parseUsageSummaryForTesting(
+            amountData: Data(amountJSON.utf8),
+            costData: Data(costJSON.utf8),
+            now: self.fixtureNow,
+            calendar: self.fixtureCalendar)
+
+        #expect(summary.period == .currentMonth)
+        #expect(summary.daily.count == 1)
+        let day = summary.daily[0]
+        #expect(day.date == dateString)
+        #expect(day.totalTokens == 1700)
+        #expect(abs((day.cost ?? 0) - 0.60) < 0.0001)
+        #expect(day.requestCount == 5)
+        #expect(day.inputTokens == 500)
+        #expect(day.outputTokens == 200)
+        #expect(day.cacheReadTokens == 1000)
+        #expect(day.modelBreakdowns?.count == 1)
+        let model = day.modelBreakdowns?[0]
+        #expect(model?.modelName == "deepseek-chat")
+        #expect(abs((model?.costUSD ?? 0) - 0.60) < 0.0001)
+        #expect(model?.totalTokens == 1700)
+        #expect(model?.requestCount == 5)
+        #expect(model?.inputTokens == 500)
+        #expect(model?.outputTokens == 200)
+        #expect(model?.cacheReadTokens == 1000)
+    }
+
+    @Test
+    func `by-api-key partial model cost preserves absent cost as unknown and retains reported costs`() throws {
+        let day = Int(self.fixtureNow.timeIntervalSince1970)
+        let amountJSON = """
+        {
+          "code": 0,
+          "data": {
+            "biz_data": {
+              "series": [
+                {
+                  "api_key": "key-1",
+                  "model": "deepseek-chat",
+                  "buckets": [{"time": \(day), "usage": {"RESPONSE_TOKEN": 100, "REQUEST": 1}}]
+                },
+                {
+                  "api_key": "key-1",
+                  "model": "deepseek-reasoner",
+                  "buckets": [{"time": \(day), "usage": {"RESPONSE_TOKEN": 200, "REQUEST": 1}}]
+                },
+                {
+                  "api_key": "key-1",
+                  "model": "deepseek-coder",
+                  "buckets": [{"time": \(day), "usage": {"RESPONSE_TOKEN": 50, "REQUEST": 1}}]
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        let costJSON = """
+        {
+          "code": 0,
+          "data": {
+            "biz_data": {
+              "data": [{
+                "currency": "USD",
+                "series": [
+                  {
+                    "api_key": "key-1",
+                    "model": "deepseek-chat",
+                    "buckets": [{"time": \(day), "cost": "0.15"}]
+                  },
+                  {
+                    "api_key": "key-1",
+                    "model": "deepseek-coder",
+                    "buckets": [{"time": \(day), "cost": "0.00"}]
+                  }
+                ]
+              }]
+            }
+          }
+        }
+        """
+
+        let summary = try DeepSeekUsageCostParser.parseByAPIKey(
+            amountData: Data(amountJSON.utf8),
+            costData: Data(costJSON.utf8),
+            now: self.fixtureNow,
+            calendar: self.fixtureCalendar)
+
+        #expect(summary.daily.count == 1)
+        let dayUsage = summary.daily[0]
+        let breakdowns = dayUsage.modelBreakdowns ?? []
+        #expect(breakdowns.count == 3)
+
+        let chat = breakdowns.first { $0.modelName == "deepseek-chat" }
+        #expect(chat?.costUSD == 0.15)
+
+        let reasoner = breakdowns.first { $0.modelName == "deepseek-reasoner" }
+        #expect(reasoner?.costUSD == nil)
+
+        let coder = breakdowns.first { $0.modelName == "deepseek-coder" }
+        #expect(coder?.costUSD == 0.0)
+    }
+
+    @Test
+    func `monthly fallback partial model cost preserves absent cost as unknown and retains reported costs`() throws {
+        let dateString = "2026-05-26"
+        let amountJSON = """
+        {
+          "code": 0,
+          "msg": "",
+          "data": {
+            "biz_code": 0,
+            "biz_msg": "",
+            "biz_data": {
+              "total": [],
+              "days": [
+                {
+                  "date": "\(dateString)",
+                  "data": [
+                    {
+                      "model": "deepseek-chat",
+                      "usage": [{"type": "RESPONSE_TOKEN", "amount": "100"}, {"type": "REQUEST", "amount": "1"}]
+                    },
+                    {
+                      "model": "deepseek-reasoner",
+                      "usage": [{"type": "RESPONSE_TOKEN", "amount": "200"}, {"type": "REQUEST", "amount": "1"}]
+                    },
+                    {
+                      "model": "deepseek-coder",
+                      "usage": [{"type": "RESPONSE_TOKEN", "amount": "50"}, {"type": "REQUEST", "amount": "1"}]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        let costJSON = """
+        {
+          "code": 0,
+          "msg": "",
+          "data": {
+            "biz_code": 0,
+            "biz_msg": "",
+            "biz_data": [
+              {
+                "currency": "USD",
+                "total": [],
+                "days": [
+                  {
+                    "date": "\(dateString)",
+                    "data": [
+                      {
+                        "model": "deepseek-chat",
+                        "usage": [{"type": "RESPONSE_TOKEN", "amount": "0.15"}]
+                      },
+                      {
+                        "model": "deepseek-coder",
+                        "usage": [{"type": "RESPONSE_TOKEN", "amount": "0.00"}]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """
+
+        let summary = try DeepSeekUsageFetcher._parseUsageSummaryForTesting(
+            amountData: Data(amountJSON.utf8),
+            costData: Data(costJSON.utf8),
+            now: self.fixtureNow,
+            calendar: self.fixtureCalendar)
+
+        #expect(summary.daily.count == 1)
+        let dayUsage = summary.daily[0]
+        let breakdowns = dayUsage.modelBreakdowns ?? []
+        #expect(breakdowns.count == 3)
+
+        let chat = breakdowns.first { $0.modelName == "deepseek-chat" }
+        #expect(chat?.costUSD == 0.15)
+
+        let reasoner = breakdowns.first { $0.modelName == "deepseek-reasoner" }
+        #expect(reasoner?.costUSD == nil)
+
+        let coder = breakdowns.first { $0.modelName == "deepseek-coder" }
+        #expect(coder?.costUSD == 0.0)
+    }
+
+    @Test
+    func `monthly fallback invalid model cost amount preserves cost as unknown`() throws {
+        let dateString = "2026-05-26"
+        let amountJSON = """
+        {
+          "code": 0,
+          "msg": "",
+          "data": {
+            "biz_code": 0,
+            "biz_msg": "",
+            "biz_data": {
+              "total": [],
+              "days": [
+                {
+                  "date": "\(dateString)",
+                  "data": [
+                    {
+                      "model": "deepseek-chat",
+                      "usage": [{"type": "RESPONSE_TOKEN", "amount": "100"}, {"type": "REQUEST", "amount": "1"}]
+                    },
+                    {
+                      "model": "deepseek-coder",
+                      "usage": [{"type": "RESPONSE_TOKEN", "amount": "50"}, {"type": "REQUEST", "amount": "1"}]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        let costJSON = """
+        {
+          "code": 0,
+          "msg": "",
+          "data": {
+            "biz_code": 0,
+            "biz_msg": "",
+            "biz_data": [
+              {
+                "currency": "USD",
+                "total": [],
+                "days": [
+                  {
+                    "date": "\(dateString)",
+                    "data": [
+                      {
+                        "model": "deepseek-chat",
+                        "usage": [{"type": "RESPONSE_TOKEN", "amount": "not-a-number"}]
+                      },
+                      {
+                        "model": "deepseek-coder",
+                        "usage": [{"type": "RESPONSE_TOKEN", "amount": "0.00"}]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """
+
+        let summary = try DeepSeekUsageFetcher._parseUsageSummaryForTesting(
+            amountData: Data(amountJSON.utf8),
+            costData: Data(costJSON.utf8),
+            now: self.fixtureNow,
+            calendar: self.fixtureCalendar)
+
+        #expect(summary.daily.count == 1)
+        let dayUsage = summary.daily[0]
+        let breakdowns = dayUsage.modelBreakdowns ?? []
+        #expect(breakdowns.count == 2)
+
+        let chat = breakdowns.first { $0.modelName == "deepseek-chat" }
+        #expect(chat?.costUSD == nil)
+
+        let coder = breakdowns.first { $0.modelName == "deepseek-coder" }
+        #expect(coder?.costUSD == 0.0)
     }
 }
 

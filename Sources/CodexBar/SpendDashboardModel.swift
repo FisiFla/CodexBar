@@ -556,7 +556,8 @@ struct SpendDashboardModel: Equatable, Sendable {
             let retainsModelHistory = if summary.totalCost != nil {
                 summaryModelHistory.completeness == .complete || summary.incompleteRequestCount > 0 ||
                     Self.canRetainPartialCodexModelHistory(summary) ||
-                    Self.canRetainPartialEstimatedModelHistory(summary)
+                    Self.canRetainPartialEstimatedModelHistory(summary) ||
+                    Self.canRetainPartialVendorMeteredModelHistory(summary)
             } else {
                 Self.canRetainUnpricedModelHistory(summary) ||
                     (summary.incompleteRequestCount > 0 && summary.entries
@@ -683,7 +684,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         var hasInvalidCostHistory = false
         var hasInvalidTokenHistory = false
         for entry in input.snapshot.daily {
-            guard let day = Self.day(entry.date, provider: input.provider, displayCalendar: calendar) else {
+            guard let day = Self.day(entry.date, input: input, displayCalendar: calendar) else {
                 hasInvalidCostHistory = hasInvalidCostHistory || !Self.hasProvenZeroCost(entry)
                 hasInvalidTokenHistory = hasInvalidTokenHistory || !Self.hasProvenZeroTokens(entry)
                 continue
@@ -802,7 +803,7 @@ struct SpendDashboardModel: Equatable, Sendable {
                     tokens: 0,
                     cost: 0)
                 for entry in project.daily {
-                    guard let day = Self.day(entry.date, provider: input.provider, displayCalendar: calendar),
+                    guard let day = Self.day(entry.date, input: input, displayCalendar: calendar),
                           bounds.contains(day),
                           summary.coveredInterval?.contains(day) == true
                     else { continue }
@@ -923,7 +924,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         let coverage = Self.sourceCoverageInterval(input: input, displayCalendar: displayCalendar)
         var dailyTotal = 0.0
         for entry in input.snapshot.daily {
-            guard let day = Self.day(entry.date, provider: input.provider, displayCalendar: displayCalendar) else {
+            guard let day = Self.day(entry.date, input: input, displayCalendar: displayCalendar) else {
                 guard Self.hasProvenZeroCost(entry) else { return false }
                 continue
             }
@@ -953,7 +954,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         let coverage = Self.sourceCoverageInterval(input: input, displayCalendar: displayCalendar)
         var dailyTotal = 0
         for entry in input.snapshot.daily {
-            guard let day = Self.day(entry.date, provider: input.provider, displayCalendar: displayCalendar) else {
+            guard let day = Self.day(entry.date, input: input, displayCalendar: displayCalendar) else {
                 guard Self.hasProvenZeroTokens(entry) else { return false }
                 continue
             }
@@ -977,7 +978,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         let coverage = Self.sourceCoverageInterval(input: input, displayCalendar: displayCalendar)
         var dailyTotal = 0
         for entry in input.snapshot.daily {
-            guard let day = Self.day(entry.date, provider: input.provider, displayCalendar: displayCalendar) else {
+            guard let day = Self.day(entry.date, input: input, displayCalendar: displayCalendar) else {
                 guard Self.nonnegative(entry.requestCount) == 0 else { return false }
                 continue
             }
@@ -1168,7 +1169,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         var invalidDays: Set<Date> = []
         var hasUnplacedTokens = false
         for entry in input.tokenActivityCache?.daily ?? input.snapshot.daily {
-            guard let day = Self.day(entry.date, provider: input.provider, displayCalendar: calendar) else {
+            guard let day = Self.day(entry.date, input: input, displayCalendar: calendar) else {
                 hasUnplacedTokens = hasUnplacedTokens || !Self.hasProvenZeroTokens(entry)
                 continue
             }
@@ -1214,11 +1215,11 @@ struct SpendDashboardModel: Equatable, Sendable {
         }
         guard let start = Self.day(
             cache.coverageSinceKey,
-            provider: input.provider,
+            input: input,
             displayCalendar: displayCalendar),
             let end = Self.day(
                 cache.coverageUntilKey,
-                provider: input.provider,
+                input: input,
                 displayCalendar: displayCalendar)
         else { return nil }
         let overlapStart = max(bounds.lowerBound, start)
@@ -1278,7 +1279,7 @@ struct SpendDashboardModel: Equatable, Sendable {
     {
         let scanned = Self.sourceCoverageInterval(input: input, displayCalendar: displayCalendar)
         let days = input.snapshot.daily
-            .compactMap { Self.day($0.date, provider: input.provider, displayCalendar: displayCalendar) }
+            .compactMap { Self.day($0.date, input: input, displayCalendar: displayCalendar) }
             .filter { scanned.contains($0) }
         guard let first = days.min(), let last = days.max() else { return nil }
         return first...last
@@ -1288,7 +1289,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         input: ProviderInput,
         displayCalendar: Calendar) -> ClosedRange<Date>
     {
-        let bucketCalendar = Self.bucketCalendar(for: input.provider, displayCalendar: displayCalendar)
+        let bucketCalendar = Self.bucketCalendar(for: input, displayCalendar: displayCalendar)
         let bucketEnd = bucketCalendar.startOfDay(for: input.snapshot.updatedAt)
         let scanEnd = displayCalendar.startOfDay(for: bucketEnd)
         let scanDays = max(1, input.snapshot.historyDays)
@@ -1324,7 +1325,7 @@ struct SpendDashboardModel: Equatable, Sendable {
 
     private static func day(
         _ rawValue: String,
-        provider: UsageProvider,
+        input: ProviderInput,
         displayCalendar: Calendar) -> Date?
     {
         let bytes = Array(rawValue.utf8)
@@ -1335,7 +1336,7 @@ struct SpendDashboardModel: Equatable, Sendable {
               digitIndices.allSatisfy({ (48...57).contains(bytes[$0]) })
         else { return nil }
         let parts = rawValue.split(separator: "-")
-        let bucketCalendar = Self.bucketCalendar(for: provider, displayCalendar: displayCalendar)
+        let bucketCalendar = Self.bucketCalendar(for: input, displayCalendar: displayCalendar)
         guard parts.count == 3,
               let year = Int(parts[0]),
               let month = Int(parts[1]),
@@ -1350,12 +1351,21 @@ struct SpendDashboardModel: Equatable, Sendable {
         return displayCalendar.startOfDay(for: date)
     }
 
-    private static func bucketCalendar(for provider: UsageProvider, displayCalendar: Calendar) -> Calendar {
-        // Provider-specific by design: mistral openrouter xai display calendar
-        guard provider == .mistral || provider == .openrouter || provider == .xai else { return displayCalendar }
-        // Mistral, OpenRouter, and xAI label daily buckets and snapshot coverage by UTC day. Map each UTC boundary into
-        // the containing local dashboard day instead of reinterpreting the label as a local date.
-        return self.utcCalendar
+    private static func bucketCalendar(for input: ProviderInput, displayCalendar: Calendar) -> Calendar {
+        // A source that declares its daily keys are vendor days (not the user's) wins outright: map
+        // each of its UTC boundaries into the containing local dashboard day instead of
+        // reinterpreting the label as a local date.
+        if input.snapshot.dailyDateBasis == .utc {
+            return self.utcCalendar
+        }
+        // Provider-specific by design: these providers label daily buckets and snapshot coverage by
+        // UTC day without declaring it on the snapshot, so they keep the same UTC-boundary mapping.
+        switch input.provider {
+        case .mistral, .openrouter, .xai:
+            return self.utcCalendar
+        default:
+            return displayCalendar
+        }
     }
 
     private static func currencyCode(_ rawValue: String) -> String? {

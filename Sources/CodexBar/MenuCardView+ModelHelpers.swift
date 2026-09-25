@@ -353,6 +353,7 @@ extension UsageMenuCardView.Model {
             self.openAIAPIUsage != nil ||
             self.inlineUsageDashboard != nil ||
             self.limitResetCredits != nil ||
+            self.deepSeekPriceClock != nil ||
             self.placeholder != nil
     }
 

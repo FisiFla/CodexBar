@@ -188,6 +188,7 @@ struct UsageMenuCardView: View {
         var creditsHintText: String?
         var creditsHintCopyText: String?
         var limitResetCredits: LimitResetCreditsPresentation?
+        var deepSeekPriceClock: DeepSeekPriceClockPresentation?
         let providerCost: ProviderCostSection?
         let tokenUsage: TokenUsageSection?
         let placeholder: String?
@@ -231,6 +232,9 @@ struct UsageMenuCardView: View {
                     Text(placeholder)
                         .foregroundStyle(MenuHighlightStyle.secondary(self.isHighlighted))
                         .font(.subheadline)
+                }
+                if let priceClock = liveModel.deepSeekPriceClock {
+                    DeepSeekPriceClockView(presentation: priceClock)
                 }
                 if !liveModel.providerDetails.isEmpty {
                     ProviderDetailSectionsContent(
@@ -668,6 +672,9 @@ private struct UsageMenuCardUsageContentView: View {
                 .foregroundStyle(MenuHighlightStyle.secondary(self.isHighlighted))
                 .font(.subheadline)
         }
+        if let priceClock = self.model.deepSeekPriceClock {
+            DeepSeekPriceClockView(presentation: priceClock)
+        }
         if !self.model.providerDetails.isEmpty {
             ProviderDetailSectionsContent(
                 sections: self.model.providerDetails,
@@ -936,6 +943,7 @@ extension UsageMenuCardView.Model {
             creditsHintText: codexCreditLimitDetail ?? redacted.creditsHintText,
             creditsHintCopyText: codexCreditLimitDetail ?? redacted.creditsHintCopyText,
             limitResetCredits: Self.limitResetCredits(input: input),
+            deepSeekPriceClock: Self.deepSeekPriceClock(input: input),
             providerCost: providerCost,
             tokenUsage: tokenUsage,
             placeholder: placeholder,
